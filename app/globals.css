@@ -65,3 +65,15 @@ header { height:68px; background:#fff; border-bottom:1px solid var(--line); disp
 .brand{height:72px;padding:7px 8px 18px;gap:8px;letter-spacing:1px}.brand img{width:150px;height:54px;object-fit:contain;background:#fff;border-radius:9px;padding:5px 8px}.brand strong{color:#c49a61;font-size:10px;letter-spacing:1.5px}
 nav button:hover,nav button.active,.sidebar nav a:hover,.sidebar nav a.active{background:rgba(76,172,169,.16);color:#fff}.sidebar nav a.active,nav button.active{box-shadow:inset 3px 0 #ad7b35}.nav-label{color:#72918f}.ai-card{background:rgba(76,172,169,.1);border-color:rgba(76,172,169,.28)}.spark,.ai-title>span,.modal-icon{color:#c99a5a}.primary-button,.login-submit,.note-compose button{background:#153b3a;border-color:#153b3a}.primary-button:hover,.login-submit:hover{background:#205451}.stat-icon.gold{background:#f3e9dc;color:#ad7b35}.stat-icon.green{background:#e0f2f0;color:#318e8a}.progress i{background:linear-gradient(90deg,#ad7b35,#c79755)}.client-cell>span{background:#dff1ef;color:#2f8f8b}.stage.blue{background:#dff1ef;color:#277e7a}.panel-head button,.brief button,.data-row a{color:#2f8581}.login-brand{background:linear-gradient(145deg,#102726,#174442)}.login-brand:after{border-color:rgba(173,123,53,.28);box-shadow:0 0 0 70px rgba(76,172,169,.035),0 0 0 140px rgba(173,123,53,.025)}.login-logo{align-items:center}.login-logo img{width:175px;height:76px;object-fit:contain;background:#fff;border-radius:10px;padding:6px 10px}.login-logo b{color:#c99a5a;letter-spacing:2px}.login-promise>p:first-child,.login-promise h1 i{color:#c99a5a}.login-spark{background:#153b3a;color:#c99a5a}.login-form input:focus,.form-grid input:focus,.form-grid select:focus{border-color:#4caca9;box-shadow:0 0 0 3px rgba(76,172,169,.15)}.kanban-card:hover{border-color:#4caca9}.workflow-note{background:#e3f2f0;color:#326d69}
 @media(max-width:760px){.brand img{width:43px;object-fit:cover;object-position:left;padding:3px}.brand strong{display:none}}
+
+/* Refined sidebar identity: charcoal foundation with restrained brand accents. */
+.sidebar{background:linear-gradient(180deg,#182224 0%,#11191b 100%)}
+.brand{height:65px;padding:0 9px 22px;gap:11px;letter-spacing:0}
+.brand-shield{position:relative;width:38px;height:42px;overflow:hidden;flex:0 0 38px;background:#fff;border-radius:9px;box-shadow:0 5px 16px rgba(0,0,0,.18)}
+.brand-shield img{position:absolute;width:108px!important;height:auto!important;max-width:none;left:-35px;top:0;padding:0!important;background:transparent!important;border-radius:0!important}
+.brand-word{color:#f6f7f5;font-size:13px;font-weight:800;letter-spacing:1.6px;white-space:nowrap}
+.brand-word b{color:#c3914f;font-weight:800}
+.nav-label{color:#778486}
+nav button:hover,nav button.active,.sidebar nav a:hover,.sidebar nav a.active{background:rgba(76,172,169,.10)}
+.ai-card{background:rgba(255,255,255,.035);border-color:rgba(76,172,169,.25)}
+@media(max-width:760px){.brand{padding:0 4px 23px}.brand-word{display:none}.brand-shield{width:38px;flex-basis:38px}}
