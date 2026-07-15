@@ -1,6 +1,9 @@
 "use client";
 
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 
 type Job = {
   name: string;
@@ -29,6 +32,10 @@ const stages = [
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 export default function Home() {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const [activeNav, setActiveNav] = useState("Command center");
   const [query, setQuery] = useState("");
   const [showImport, setShowImport] = useState(false);
@@ -36,6 +43,24 @@ export default function Home() {
   const [importRows, setImportRows] = useState<string[][]>([]);
   const [imported, setImported] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) router.replace("/login");
+      setUser(data.user);
+      setAuthReady(true);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session?.user) router.replace("/login");
+    });
+    return () => data.subscription.unsubscribe();
+  }, [router, supabase]);
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  }
 
   const filteredJobs = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -61,6 +86,10 @@ export default function Home() {
     setImportRows([]);
   }
 
+  if (!authReady || !user) return <main className="auth-loading"><span>R</span><p>Opening your command center…</p></main>;
+
+  const displayName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Roofnut Admin";
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -80,7 +109,7 @@ export default function Home() {
           ))}
         </nav>
         <div className="ai-card"><span className="spark">✦</span><div><b>Roofnut AI</b><p>Ask anything about your business</p></div><button aria-label="Open Roofnut AI">→</button></div>
-        <div className="user-card"><span>KR</span><div><b>Kendall Roofnut</b><p>Administrator</p></div><button>•••</button></div>
+        <div className="user-card"><span>{displayName.split(" ").map((part: string) => part[0]).join("").slice(0,2).toUpperCase()}</span><div><b>{displayName}</b><p>Administrator</p></div><button onClick={signOut} title="Sign out">↪</button></div>
       </aside>
 
       <section className="workspace">
