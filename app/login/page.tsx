@@ -42,7 +42,7 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-brand">
-        <div className="login-logo"><span>R</span><b>ROOFNUT <em>CRM</em></b></div>
+        <div className="login-logo"><img src="/roofnut-logo.png" alt="Roofnut"/><b>CRM</b></div>
         <div className="login-promise">
           <p>YOUR ROOFING COMMAND CENTER</p>
           <h1>Every lead.<br />Every roof.<br /><i>Nothing missed.</i></h1>

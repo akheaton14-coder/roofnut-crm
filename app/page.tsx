@@ -144,7 +144,7 @@ export default function Home() {
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">R</span><span>ROOFNUT <b>CRM</b></span></div>
+        <div className="brand"><img src="/roofnut-logo.png" alt="Roofnut"/><strong>CRM</strong></div>
         <nav>
           <p className="nav-label">WORKSPACE</p>
           {["Command center", "Clients", "Jobs", "Calendar", "Tasks"].map((item, i) => (
