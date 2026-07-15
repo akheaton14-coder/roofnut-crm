@@ -65,9 +65,9 @@ export default function Home() {
       const { data: membership } = await supabase.from("organization_members").select("organization_id").eq("user_id", user!.id).maybeSingle();
       if (!membership?.organization_id) { setJobsLoaded(true); return; }
       setOrganizationId(membership.organization_id);
-      const { data } = await supabase.from("jobs").select("id,title,stage,contract_value,next_action,clients(first_name,last_name),properties(address_1,city),profiles!jobs_owner_id_fkey(full_name)").eq("organization_id", membership.organization_id).order("updated_at", { ascending: false }).limit(20);
-      const rows = (data || []) as unknown as Array<{id:string;title:string;stage:string;contract_value:number;next_action:string|null;clients:{first_name:string;last_name:string}|null;properties:{address_1:string;city:string}|null;profiles:{full_name:string}|null}>;
-      setLiveJobs(rows.map((row) => ({ id: row.id, name: row.title, address: row.properties ? `${row.properties.address_1} · ${row.properties.city}` : `${row.clients?.first_name || ""} ${row.clients?.last_name || ""}`.trim(), stage: row.stage.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()), value: Number(row.contract_value), owner: row.profiles?.full_name || "Unassigned", next: row.next_action || "Add next action", tone: row.stage === "sold" ? "gold" : row.stage.includes("production") || row.stage === "scheduled" ? "green" : row.stage.includes("estimate") ? "red" : "blue" })));
+      const { data } = await supabase.from("jobs").select("id,title,stage,contract_value,next_action,workflow_stages(name,key),clients(first_name,last_name),properties(address_1,city),profiles!jobs_owner_id_fkey(full_name)").eq("organization_id", membership.organization_id).order("updated_at", { ascending: false }).limit(20);
+      const rows = (data || []) as unknown as Array<{id:string;title:string;stage:string;contract_value:number;next_action:string|null;workflow_stages:{name:string;key:string}|null;clients:{first_name:string;last_name:string}|null;properties:{address_1:string;city:string}|null;profiles:{full_name:string}|null}>;
+      setLiveJobs(rows.map((row) => {const key=row.workflow_stages?.key||row.stage;return ({ id: row.id, name: row.title, address: row.properties ? `${row.properties.address_1} · ${row.properties.city}` : `${row.clients?.first_name || ""} ${row.clients?.last_name || ""}`.trim(), stage: row.workflow_stages?.name||row.stage.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()), value: Number(row.contract_value), owner: row.profiles?.full_name || "Unassigned", next: row.next_action || "Add next action", tone: key === "sold" ? "gold" : key.includes("production") || key === "scheduled" ? "green" : key.includes("estimate") ? "red" : "blue" })}));
       setJobsLoaded(true);
     }
     loadWorkspace();
@@ -129,7 +129,9 @@ export default function Home() {
       if (error) { setErrorMessage(error.message); setSaving(false); return; }
       propertyId = property.id;
     }
-    const { data: created, error } = await supabase.from("jobs").insert({ organization_id: organizationId, client_id: client.id, property_id: propertyId, title: newJob.title, stage: newJob.stage, contract_value: Number(newJob.value) || 0, owner_id: user.id, next_action: newJob.nextAction || null }).select("id,title,stage,contract_value,next_action").single();
+    const {data:workflow}=await supabase.from("workflows").select("id").eq("organization_id",organizationId).eq("is_default",true).maybeSingle();
+    const {data:workflowStage}=workflow?await supabase.from("workflow_stages").select("id").eq("workflow_id",workflow.id).eq("key",newJob.stage).maybeSingle():{data:null};
+    const { data: created, error } = await supabase.from("jobs").insert({ organization_id: organizationId, client_id: client.id, property_id: propertyId, title: newJob.title, stage: newJob.stage, workflow_id:workflow?.id||null,workflow_stage_id:workflowStage?.id||null,contract_value: Number(newJob.value) || 0, owner_id: user.id, next_action: newJob.nextAction || null }).select("id,title,stage,contract_value,next_action").single();
     setSaving(false);
     if (error) { setErrorMessage(error.message); return; }
     setLiveJobs((current) => [{ id: created.id, name: created.title, address: newJob.address ? `${newJob.address} · ${newJob.city}` : `${newJob.firstName} ${newJob.lastName}`, stage: created.stage.replaceAll("_", " ").replace(/\b\w/g, (c:string) => c.toUpperCase()), value: Number(created.contract_value), owner: user.user_metadata?.full_name || "You", next: created.next_action || "Add next action", tone: created.stage === "sold" ? "gold" : "blue" }, ...current]);
