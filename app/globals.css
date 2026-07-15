@@ -54,4 +54,5 @@ header { height:68px; background:#fff; border-bottom:1px solid var(--line); disp
 .annotator{overflow:hidden}
 .canvas-wrap{height:100%;overflow:hidden}
 .canvas-wrap canvas{display:block;width:auto;height:auto;max-width:100%;max-height:calc(100dvh - 190px)}
-.inline-text-editor{position:fixed;z-index:140;min-width:220px;min-height:52px;max-width:min(420px,calc(100vw - 30px));transform:translateY(-4px);resize:both;background:rgba(8,12,13,.84);border:2px solid;border-radius:6px;padding:7px 9px;outline:0;font:700 20px/1.2 Arial;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.inline-text-editor{position:fixed;z-index:140;max-width:calc(100vw - 30px);transform:translateY(-2px);resize:none;overflow:hidden;background:transparent;border:0;padding:0;outline:0;font:700 22px/1.18 Arial;text-shadow:0 1px 3px rgba(0,0,0,.7);caret-color:currentColor}
+.inline-text-editor::placeholder{color:currentColor;opacity:.55}
