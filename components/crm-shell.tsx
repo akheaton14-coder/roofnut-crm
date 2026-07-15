@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const links = [
   ["Command center", "/", "⌂"], ["Clients", "/clients", "◎"], ["Jobs", "/jobs", "▣"],
-  ["Calendar", "#", "□"], ["Tasks", "#", "✓"], ["Pipeline", "#", "↗"],
+  ["Calendar", "#", "□"], ["Tasks", "#", "✓"], ["Pipeline", "/pipeline", "↗"],
   ["Estimates", "#", "$"], ["Production", "#", "◇"], ["Payments", "#", "◫"],
 ];
 
