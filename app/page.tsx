@@ -148,7 +148,7 @@ export default function Home() {
         <nav>
           <p className="nav-label">WORKSPACE</p>
           {["Command center", "Clients", "Jobs", "Calendar", "Tasks"].map((item, i) => (
-            <button key={item} onClick={() => setActiveNav(item)} className={activeNav === item ? "active" : ""}>
+            <button key={item} onClick={() => item === "Clients" ? router.push("/clients") : item === "Jobs" ? router.push("/jobs") : setActiveNav(item)} className={activeNav === item ? "active" : ""}>
               <span className="nav-icon">{["⌂", "◎", "▣", "□", "✓"][i]}</span>{item}{item === "Tasks" && <em>8</em>}
             </button>
           ))}
@@ -194,7 +194,7 @@ export default function Home() {
                   <span className={`stage ${job.tone}`}>{job.stage}</span>
                   <div className="job-value"><b>{money.format(job.value)}</b><p>{job.owner}</p></div>
                   <div className="job-next"><b>{job.next}</b><p>Next action</p></div>
-                  <button aria-label={`Open ${job.name}`}>›</button>
+                  <button onClick={() => job.id && router.push(`/jobs/${job.id}`)} aria-label={`Open ${job.name}`}>›</button>
                 </article>)}
                 {jobsLoaded && !filteredJobs.length && <div className="empty">{query ? `No jobs match “${query}”.` : "No live jobs yet. Create your first job to get started."}</div>}
               </div>
