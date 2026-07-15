@@ -5,16 +5,16 @@ import { DragEvent, useEffect, useMemo, useState } from "react";
 import { CrmShell } from "@/components/crm-shell";
 import { useWorkspace } from "@/lib/use-workspace";
 
-type Stage = { id:string; name:string; color:string; position:number; time_limit_days:number|null };
+type Stage = { id:string; name:string; color:string; position:number; time_limit_days:number|null; phase?:string };
 type Job = { id:string; title:string; contract_value:number; next_action:string|null; workflow_stage_id:string|null; updated_at:string; clients:{first_name:string;last_name:string}|null; properties:{city:string}|null };
 type Phase = { id:string; label:string; description:string; matches:(stage:Stage)=>boolean };
 
 const phases:Phase[] = [
-  { id:"leads", label:"Leads", description:"New opportunities and inspections", matches:s=>/lead|inspection/i.test(s.name) },
-  { id:"estimating", label:"Estimating", description:"Pricing, proposals and approvals", matches:s=>/estimat/i.test(s.name) },
-  { id:"preproduction", label:"Pre-Production", description:"Sold jobs getting ready to build", matches:s=>/sold|pre.?production|scheduled/i.test(s.name) },
-  { id:"production", label:"Production", description:"Active builds and completion", matches:s=>/in production|completed|complete/i.test(s.name) },
-  { id:"closed", label:"Closed / Lost", description:"Archived opportunities", matches:s=>/lost|cancel/i.test(s.name) },
+  { id:"leads", label:"Leads", description:"New opportunities and inspections", matches:s=>s.phase?s.phase==="leads":/lead|inspection/i.test(s.name) },
+  { id:"estimating", label:"Estimating", description:"Pricing, proposals and approvals", matches:s=>s.phase?s.phase==="estimating":/estimat/i.test(s.name) },
+  { id:"preproduction", label:"Pre-Production", description:"Sold jobs getting ready to build", matches:s=>s.phase?s.phase==="preproduction":/sold|pre.?production|scheduled/i.test(s.name) },
+  { id:"production", label:"Production", description:"Active builds and completion", matches:s=>s.phase?s.phase==="production":/in production|completed|complete/i.test(s.name) },
+  { id:"closed", label:"Closed / Lost", description:"Archived opportunities", matches:s=>s.phase?s.phase==="closed":/lost|cancel/i.test(s.name) },
 ];
 
 export default function PipelinePage(){
@@ -29,7 +29,9 @@ export default function PipelinePage(){
       supabase.from("workflow_stages").select("id,name,color,position,time_limit_days").eq("workflow_id",w.id).order("position"),
       supabase.from("jobs").select("id,title,contract_value,next_action,workflow_stage_id,updated_at,clients(first_name,last_name),properties(city)").eq("organization_id",organizationId).eq("workflow_id",w.id)
     ]);
-    setStages((s||[]) as Stage[]);setJobs((j||[]) as unknown as Job[]);
+    const {data:phaseRows}=await supabase.from("workflow_stages").select("id,phase").eq("workflow_id",w.id);
+    const phaseMap=new Map((phaseRows||[]).map(row=>[row.id,row.phase as string]));
+    setStages(((s||[]) as Stage[]).map(stage=>({...stage,phase:phaseMap.get(stage.id)})));setJobs((j||[]) as unknown as Job[]);
   })()},[organizationId,supabase]);
 
   async function drop(event:DragEvent,stageId:string){event.preventDefault();const jobId=event.dataTransfer.getData("jobId");if(!jobId)return;setJobs(current=>current.map(job=>job.id===jobId?{...job,workflow_stage_id:stageId}:job));await supabase.from("jobs").update({workflow_stage_id:stageId,updated_at:new Date().toISOString()}).eq("id",jobId)}

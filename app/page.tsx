@@ -188,13 +188,13 @@ export default function Home() {
             <section className="panel jobs-panel">
               <div className="panel-head"><div><h3>Jobs that need attention</h3><p>Prioritized by Roofnut AI</p></div><button>View all jobs →</button></div>
               <div className="job-list">
-                {filteredJobs.map((job) => <article className="job-row" key={job.name}>
+                {filteredJobs.map((job) => <article className="job-row clickable-job" key={job.name} role="link" tabIndex={0} onClick={() => job.id && router.push(`/jobs/${job.id}`)} onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && job.id) router.push(`/jobs/${job.id}`) }}>
                   <span className={`job-badge ${job.tone}`}>{job.name.split(" ").slice(0,2).map(w=>w[0]).join("")}</span>
                   <div className="job-main"><h4>{job.name}</h4><p>{job.address}</p></div>
                   <span className={`stage ${job.tone}`}>{job.stage}</span>
                   <div className="job-value"><b>{money.format(job.value)}</b><p>{job.owner}</p></div>
                   <div className="job-next"><b>{job.next}</b><p>Next action</p></div>
-                  <button onClick={() => job.id && router.push(`/jobs/${job.id}`)} aria-label={`Open ${job.name}`}>›</button>
+                  <span className="job-open" aria-hidden="true">›</span>
                 </article>)}
                 {jobsLoaded && !filteredJobs.length && <div className="empty">{query ? `No jobs match “${query}”.` : "No live jobs yet. Create your first job to get started."}</div>}
               </div>
