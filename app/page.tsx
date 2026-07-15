@@ -6,6 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 
 type Job = {
+  id?: string;
   name: string;
   address: string;
   stage: string;
@@ -14,13 +15,6 @@ type Job = {
   next: string;
   tone: "gold" | "blue" | "green" | "red";
 };
-
-const jobs: Job[] = [
-  { name: "The Smith Residence", address: "1842 Brookstone Dr · Raleigh", stage: "Sold", value: 24850, owner: "Kendall", next: "Confirm shingle color", tone: "gold" },
-  { name: "Rivera Roofing Project", address: "726 Cedar Ridge Ln · Cary", stage: "Ready for production", value: 31740, owner: "Mia", next: "Order materials", tone: "blue" },
-  { name: "Johnson Insurance Claim", address: "91 Laurel Glen Ct · Durham", stage: "Estimate sent", value: 18990, owner: "Chris", next: "Follow up today", tone: "red" },
-  { name: "Harrington Roof & Gutters", address: "4430 Oak Haven Rd · Apex", stage: "Scheduled", value: 27350, owner: "Kendall", next: "Install · Jul 22", tone: "green" },
-];
 
 const stages = [
   { name: "New leads", count: 14, value: "$182k", color: "#9aa3ad" },
@@ -39,9 +33,17 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("Command center");
   const [query, setQuery] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [showNewJob, setShowNewJob] = useState(false);
+  const [organizationId, setOrganizationId] = useState("");
+  const [liveJobs, setLiveJobs] = useState<Job[]>([]);
+  const [jobsLoaded, setJobsLoaded] = useState(false);
   const [importName, setImportName] = useState("");
   const [importRows, setImportRows] = useState<string[][]>([]);
+  const [allImportRows, setAllImportRows] = useState<string[][]>([]);
   const [imported, setImported] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [newJob, setNewJob] = useState({ firstName: "", lastName: "", email: "", phone: "", address: "", city: "", state: "NC", postalCode: "", title: "", stage: "new_lead", value: "", nextAction: "" });
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -57,6 +59,20 @@ export default function Home() {
     return () => data.subscription.unsubscribe();
   }, [router, supabase]);
 
+  useEffect(() => {
+    if (!user) return;
+    async function loadWorkspace() {
+      const { data: membership } = await supabase.from("organization_members").select("organization_id").eq("user_id", user!.id).maybeSingle();
+      if (!membership?.organization_id) { setJobsLoaded(true); return; }
+      setOrganizationId(membership.organization_id);
+      const { data } = await supabase.from("jobs").select("id,title,stage,contract_value,next_action,clients(first_name,last_name),properties(address_1,city),profiles!jobs_owner_id_fkey(full_name)").eq("organization_id", membership.organization_id).order("updated_at", { ascending: false }).limit(20);
+      const rows = (data || []) as unknown as Array<{id:string;title:string;stage:string;contract_value:number;next_action:string|null;clients:{first_name:string;last_name:string}|null;properties:{address_1:string;city:string}|null;profiles:{full_name:string}|null}>;
+      setLiveJobs(rows.map((row) => ({ id: row.id, name: row.title, address: row.properties ? `${row.properties.address_1} · ${row.properties.city}` : `${row.clients?.first_name || ""} ${row.clients?.last_name || ""}`.trim(), stage: row.stage.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()), value: Number(row.contract_value), owner: row.profiles?.full_name || "Unassigned", next: row.next_action || "Add next action", tone: row.stage === "sold" ? "gold" : row.stage.includes("production") || row.stage === "scheduled" ? "green" : row.stage.includes("estimate") ? "red" : "blue" })));
+      setJobsLoaded(true);
+    }
+    loadWorkspace();
+  }, [supabase, user]);
+
   async function signOut() {
     await supabase.auth.signOut();
     router.replace("/login");
@@ -64,8 +80,8 @@ export default function Home() {
 
   const filteredJobs = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return needle ? jobs.filter((job) => `${job.name} ${job.address} ${job.stage} ${job.owner}`.toLowerCase().includes(needle)) : jobs;
-  }, [query]);
+    return needle ? liveJobs.filter((job) => `${job.name} ${job.address} ${job.stage} ${job.owner}`.toLowerCase().includes(needle)) : liveJobs;
+  }, [liveJobs, query]);
 
   function readCsv(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -74,16 +90,51 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = () => {
       const lines = String(reader.result).split(/\r?\n/).filter(Boolean);
-      setImportRows(lines.slice(0, 6).map((line) => line.split(",").map((cell) => cell.replace(/^"|"$/g, "").trim())));
+      const parsed = lines.map((line) => line.match(/("[^"]*(?:""[^"]*)*"|[^,]*)(?:,|$)/g)?.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "").replaceAll('""', '"').trim()) || []);
+      setAllImportRows(parsed);
+      setImportRows(parsed.slice(0, 6));
     };
     reader.readAsText(file);
   }
 
-  function completeImport() {
-    const count = Math.max(0, importRows.length - 1);
-    setImported(count || 248);
+  async function completeImport() {
+    if (!organizationId || allImportRows.length < 2) return;
+    setSaving(true); setErrorMessage("");
+    const headers = allImportRows[0].map((header) => header.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    const pick = (row: string[], names: string[]) => { const index = headers.findIndex((header) => names.includes(header)); return index >= 0 ? row[index]?.trim() || "" : ""; };
+    const { data: existing } = await supabase.from("clients").select("email").eq("organization_id", organizationId);
+    const knownEmails = new Set((existing || []).map((client) => client.email?.toLowerCase()).filter(Boolean));
+    const records = allImportRows.slice(1).map((row) => {
+      const fullName = pick(row, ["name", "fullname", "contactname"]); const parts = fullName.split(/\s+/).filter(Boolean);
+      const firstName = pick(row, ["firstname", "first", "contactfirstname"]) || parts[0] || "Unknown";
+      const lastName = pick(row, ["lastname", "last", "contactlastname"]) || parts.slice(1).join(" ") || "Unknown";
+      return { organization_id: organizationId, first_name: firstName, last_name: lastName, email: pick(row, ["email", "emailaddress", "contactemail"]) || null, phone: pick(row, ["phone", "phonenumber", "mobile", "contactphone"]) || null, company: pick(row, ["company", "companyname"]) || null, source: "csv_import" };
+    }).filter((record) => !record.email || !knownEmails.has(record.email.toLowerCase()));
+    const { error } = records.length ? await supabase.from("clients").insert(records) : { error: null };
+    setSaving(false);
+    if (error) { setErrorMessage(error.message); return; }
+    setImported(records.length);
     setShowImport(false);
-    setImportRows([]);
+    setImportRows([]); setAllImportRows([]);
+  }
+
+  async function createJob() {
+    if (!user || !organizationId || !newJob.firstName || !newJob.lastName || !newJob.title) return;
+    setSaving(true); setErrorMessage("");
+    const { data: client, error: clientError } = await supabase.from("clients").insert({ organization_id: organizationId, first_name: newJob.firstName, last_name: newJob.lastName, email: newJob.email || null, phone: newJob.phone || null }).select("id").single();
+    if (clientError) { setErrorMessage(clientError.message); setSaving(false); return; }
+    let propertyId: string | null = null;
+    if (newJob.address && newJob.city && newJob.postalCode) {
+      const { data: property, error } = await supabase.from("properties").insert({ organization_id: organizationId, client_id: client.id, address_1: newJob.address, city: newJob.city, state: newJob.state, postal_code: newJob.postalCode }).select("id").single();
+      if (error) { setErrorMessage(error.message); setSaving(false); return; }
+      propertyId = property.id;
+    }
+    const { data: created, error } = await supabase.from("jobs").insert({ organization_id: organizationId, client_id: client.id, property_id: propertyId, title: newJob.title, stage: newJob.stage, contract_value: Number(newJob.value) || 0, owner_id: user.id, next_action: newJob.nextAction || null }).select("id,title,stage,contract_value,next_action").single();
+    setSaving(false);
+    if (error) { setErrorMessage(error.message); return; }
+    setLiveJobs((current) => [{ id: created.id, name: created.title, address: newJob.address ? `${newJob.address} · ${newJob.city}` : `${newJob.firstName} ${newJob.lastName}`, stage: created.stage.replaceAll("_", " ").replace(/\b\w/g, (c:string) => c.toUpperCase()), value: Number(created.contract_value), owner: user.user_metadata?.full_name || "You", next: created.next_action || "Add next action", tone: created.stage === "sold" ? "gold" : "blue" }, ...current]);
+    setShowNewJob(false);
+    setNewJob({ firstName: "", lastName: "", email: "", phone: "", address: "", city: "", state: "NC", postalCode: "", title: "", stage: "new_lead", value: "", nextAction: "" });
   }
 
   if (!authReady || !user) return <main className="auth-loading"><span>R</span><p>Opening your command center…</p></main>;
@@ -117,7 +168,7 @@ export default function Home() {
           <div className="search"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients, jobs, addresses..."/><kbd>⌘ K</kbd></div>
           <button className="icon-button" aria-label="Notifications">♢<i /></button>
           <button className="import-button" onClick={() => setShowImport(true)}>↑ Import clients</button>
-          <button className="primary-button">＋ New job</button>
+          <button className="primary-button" onClick={() => setShowNewJob(true)}>＋ New job</button>
         </header>
 
         <div className="content">
@@ -145,7 +196,7 @@ export default function Home() {
                   <div className="job-next"><b>{job.next}</b><p>Next action</p></div>
                   <button aria-label={`Open ${job.name}`}>›</button>
                 </article>)}
-                {!filteredJobs.length && <div className="empty">No jobs match “{query}”.</div>}
+                {jobsLoaded && !filteredJobs.length && <div className="empty">{query ? `No jobs match “${query}”.` : "No live jobs yet. Create your first job to get started."}</div>}
               </div>
             </section>
 
@@ -172,7 +223,17 @@ export default function Home() {
           <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={readCsv} hidden />
           {!importRows.length ? <button className="dropzone" onClick={() => fileRef.current?.click()}><span>＋</span><b>Choose a CSV file</b><small>Customers, contacts, addresses, phones, emails and job history</small></button> : <div className="preview"><div className="file-ready"><span>✓</span><div><b>{importName}</b><p>{Math.max(0, importRows.length - 1)} preview rows detected</p></div></div><div className="table-wrap"><table><tbody>{importRows.map((row,i)=><tr key={i}>{row.slice(0,4).map((cell,j)=><td key={j}>{cell || "—"}</td>)}</tr>)}</tbody></table></div></div>}
           <div className="import-notes"><span>✓ Automatic duplicate detection</span><span>✓ Preview before saving</span><span>✓ Nothing changes in JobNimbus</span></div>
-          <div className="modal-actions"><button onClick={() => setShowImport(false)}>Cancel</button><button className="primary-button" disabled={!importRows.length} onClick={completeImport}>Review & import →</button></div>
+          {errorMessage && <div className="login-message">{errorMessage}</div>}
+          <div className="modal-actions"><button onClick={() => setShowImport(false)}>Cancel</button><button className="primary-button" disabled={!importRows.length || saving} onClick={completeImport}>{saving ? "Importing…" : "Import clients →"}</button></div>
+        </section>
+      </div>}
+
+      {showNewJob && <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowNewJob(false)}>
+        <section className="modal job-modal" role="dialog" aria-modal="true" aria-labelledby="job-title">
+          <button className="modal-close" onClick={() => setShowNewJob(false)}>×</button><span className="modal-icon">＋</span><p className="eyebrow">NEW OPPORTUNITY</p><h2 id="job-title">Create a new job.</h2><p>Add the homeowner and property now. You can build the estimate and production checklist next.</p>
+          <div className="form-grid"><label>First name<input value={newJob.firstName} onChange={(e)=>setNewJob({...newJob,firstName:e.target.value})}/></label><label>Last name<input value={newJob.lastName} onChange={(e)=>setNewJob({...newJob,lastName:e.target.value})}/></label><label>Email<input type="email" value={newJob.email} onChange={(e)=>setNewJob({...newJob,email:e.target.value})}/></label><label>Phone<input value={newJob.phone} onChange={(e)=>setNewJob({...newJob,phone:e.target.value})}/></label><label className="wide">Job title<input value={newJob.title} onChange={(e)=>setNewJob({...newJob,title:e.target.value})} placeholder="Smith roof replacement"/></label><label className="wide">Property address<input value={newJob.address} onChange={(e)=>setNewJob({...newJob,address:e.target.value})}/></label><label>City<input value={newJob.city} onChange={(e)=>setNewJob({...newJob,city:e.target.value})}/></label><label>State<input value={newJob.state} onChange={(e)=>setNewJob({...newJob,state:e.target.value})}/></label><label>ZIP code<input value={newJob.postalCode} onChange={(e)=>setNewJob({...newJob,postalCode:e.target.value})}/></label><label>Contract value<input type="number" value={newJob.value} onChange={(e)=>setNewJob({...newJob,value:e.target.value})}/></label><label>Stage<select value={newJob.stage} onChange={(e)=>setNewJob({...newJob,stage:e.target.value})}><option value="new_lead">New lead</option><option value="inspection">Inspection</option><option value="estimating">Estimating</option><option value="estimate_sent">Estimate sent</option><option value="sold">Sold</option></select></label><label>Next action<input value={newJob.nextAction} onChange={(e)=>setNewJob({...newJob,nextAction:e.target.value})}/></label></div>
+          {errorMessage && <div className="login-message">{errorMessage}</div>}
+          <div className="modal-actions"><button onClick={()=>setShowNewJob(false)}>Cancel</button><button className="primary-button" disabled={saving || !newJob.firstName || !newJob.lastName || !newJob.title} onClick={createJob}>{saving ? "Saving…" : "Create job →"}</button></div>
         </section>
       </div>}
 
