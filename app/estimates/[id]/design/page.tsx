@@ -1,39 +1,693 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
-import {useParams,useRouter} from "next/navigation";
-import {CrmShell} from "@/components/crm-shell";
-import {useWorkspace} from "@/lib/use-workspace";
+import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { CrmShell } from "@/components/crm-shell";
+import { useWorkspace } from "@/lib/use-workspace";
 
-type Page={id:string;page_type:string;title:string;enabled:boolean;position:number;content:Record<string,string>};
-type Estimate={title:string;estimate_number:number;total:number;jobs:{id:string;title:string;clients:{first_name:string;last_name:string}|null;properties:{address_1:string;city:string;state:string;postal_code:string}|null}|null};
-type Item={name:string;description:string|null;quantity:number;unit:string;unit_price:number};
-type Photo={id:string;filename:string;storage_path:string;signedUrl?:string};
+type Page = {
+  id: string;
+  page_type: string;
+  title: string;
+  enabled: boolean;
+  position: number;
+  content: Record<string, string>;
+};
+type Estimate = {
+  title: string;
+  estimate_number: number;
+  total: number;
+  jobs: {
+    id: string;
+    title: string;
+    clients: { first_name: string; last_name: string } | null;
+    properties: {
+      address_1: string;
+      city: string;
+      state: string;
+      postal_code: string;
+    } | null;
+  } | null;
+};
+type Item = {
+  name: string;
+  description: string | null;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+};
+type Photo = {
+  id: string;
+  filename: string;
+  storage_path: string;
+  signedUrl?: string;
+};
 
-function RichTextEditor({value,onSave}:{value:string;onSave:(html:string)=>void}){
-  const editor=useRef<HTMLDivElement>(null);
-  useEffect(()=>{if(editor.current&&editor.current.innerHTML!==value)editor.current.innerHTML=value},[value]);
-  function command(name:string,arg?:string){document.execCommand(name,false,arg);editor.current?.focus()}
-  function addLink(){const url=prompt("Paste the link address");if(url)command("createLink",url)}
-  return <div className="rich-editor"><div className="rich-toolbar"><span role="button" tabIndex={-1} onMouseDown={e=>{e.preventDefault();command("bold")}}><b>B</b></span><span role="button" tabIndex={-1} onMouseDown={e=>{e.preventDefault();command("italic")}}><i>I</i></span><span role="button" tabIndex={-1} onMouseDown={e=>{e.preventDefault();command("underline")}}><u>U</u></span><span role="button" tabIndex={-1} onMouseDown={e=>{e.preventDefault();command("formatBlock","h2")}}>Heading</span><span role="button" tabIndex={-1} onMouseDown={e=>{e.preventDefault();command("insertOrderedList")}}>1. List</span><span role="button" tabIndex={-1} onMouseDown={e=>{e.preventDefault();command("insertUnorderedList")}}>• List</span><span role="button" tabIndex={-1} onMouseDown={e=>{e.preventDefault();addLink()}}>🔗</span><span role="button" tabIndex={-1} onMouseDown={e=>{e.preventDefault();command("removeFormat")}}>Clear</span></div><div ref={editor} className="rich-canvas" contentEditable tabIndex={0} suppressContentEditableWarning onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onBlur={e=>onSave(e.currentTarget.innerHTML)} onPaste={()=>setTimeout(()=>editor.current&&onSave(editor.current.innerHTML),0)}/></div>
+function RichTextEditor({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (html: string) => void;
+}) {
+  const editor = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editor.current && editor.current.innerHTML !== value)
+      editor.current.innerHTML = value;
+  }, [value]);
+  function command(name: string, arg?: string) {
+    document.execCommand(name, false, arg);
+    editor.current?.focus();
+  }
+  function addLink() {
+    const url = prompt("Paste the link address");
+    if (url) command("createLink", url);
+  }
+  return (
+    <div className="rich-editor">
+      <div className="rich-toolbar">
+        <span
+          role="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            command("bold");
+          }}
+        >
+          <b>B</b>
+        </span>
+        <span
+          role="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            command("italic");
+          }}
+        >
+          <i>I</i>
+        </span>
+        <span
+          role="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            command("underline");
+          }}
+        >
+          <u>U</u>
+        </span>
+        <span
+          role="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            command("formatBlock", "h2");
+          }}
+        >
+          Heading
+        </span>
+        <span
+          role="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            command("insertOrderedList");
+          }}
+        >
+          1. List
+        </span>
+        <span
+          role="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            command("insertUnorderedList");
+          }}
+        >
+          • List
+        </span>
+        <span
+          role="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            addLink();
+          }}
+        >
+          🔗
+        </span>
+        <span
+          role="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            command("removeFormat");
+          }}
+        >
+          Clear
+        </span>
+      </div>
+      <div
+        ref={editor}
+        className="rich-canvas"
+        contentEditable
+        tabIndex={0}
+        suppressContentEditableWarning
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onBlur={(e) => onSave(e.currentTarget.innerHTML)}
+        onPaste={() =>
+          setTimeout(
+            () => editor.current && onSave(editor.current.innerHTML),
+            0,
+          )
+        }
+      />
+    </div>
+  );
 }
 
-function ProposalPage({page,estimate,items,photos,pageNumber}:{page:Page;estimate:Estimate;items:Item[];photos:Photo[];pageNumber:number}){
-  const selectedIds=(page.content.photo_ids||"").split(",").filter(Boolean),selectedPhotos=photos.filter(photo=>selectedIds.includes(photo.id));
-  const tokens=(value:string)=>(value||"").replaceAll("{{CUSTOMER_FIRST_NAME}}",estimate.jobs?.clients?.first_name||"Customer").replaceAll("{{JOB_ADDRESS}}",estimate.jobs?.properties?.address_1||"").replaceAll("{{ESTIMATE_TOTAL}}",`$${Number(estimate.total).toLocaleString()}`),body=tokens(page.content.body||""),bodyHtml=tokens(page.content.body_html||"");
-  return <section className={`proposal-page ${page.page_type}`}><div className="proposal-page-brand"><b>ROOF<span>NUT</span></b><small>PROPOSAL</small></div>{page.page_type==="cover"?<><div className={`cover-art ${selectedPhotos[0]?"has-photo":""}`}>{selectedPhotos[0]?<img src={selectedPhotos[0].signedUrl} alt="Property"/>:<span>R</span>}</div><div className="cover-copy"><h1>{page.content.headline||estimate.title}</h1><p>{page.content.subheadline}</p><div><b>{estimate.jobs?.clients?.first_name} {estimate.jobs?.clients?.last_name}</b><span>{estimate.jobs?.properties?.address_1}<br/>{estimate.jobs?.properties?.city}, {estimate.jobs?.properties?.state}</span></div></div></>:page.page_type==="quote"?<><h1>{page.title}</h1><div className="preview-quote">{items.map((item,index)=><article key={index}><div><b>{item.name}</b><p>{item.description}</p></div><span>{item.quantity} {item.unit}</span><b>${(Number(item.quantity)*Number(item.unit_price)).toLocaleString()}</b></article>)}</div><div className="preview-total"><span>Estimate total</span><b>${Number(estimate.total).toLocaleString()}</b></div></>:<><h1>{page.title}</h1>{bodyHtml?<div className="preview-body rich-content" dangerouslySetInnerHTML={{__html:bodyHtml}}/>:<div className="preview-body">{body.split("\n").map((line,index)=><p key={index}>{line||" "}</p>)}</div>}{(page.page_type==="inspection"||selectedPhotos.length>0)&&<div className={`proposal-photos count-${Math.min(selectedPhotos.length,4)}`}>{selectedPhotos.length?selectedPhotos.slice(0,4).map(photo=><figure key={photo.id}><img src={photo.signedUrl} alt={photo.filename}/><figcaption>{photo.filename}</figcaption></figure>):<><span>Choose photos from this job</span><span>Choose photos from this job</span></>}</div>}</>}<footer>Roofnut · A better roof. A better experience. <span>{pageNumber}</span></footer></section>
+function ProposalPage({
+  page,
+  estimate,
+  items,
+  photos,
+  pageNumber,
+}: {
+  page: Page;
+  estimate: Estimate;
+  items: Item[];
+  photos: Photo[];
+  pageNumber: number;
+}) {
+  const selectedIds = (page.content.photo_ids || "").split(",").filter(Boolean),
+    selectedPhotos = photos.filter((photo) => selectedIds.includes(photo.id));
+  const tokens = (value: string) =>
+      (value || "")
+        .replaceAll(
+          "{{CUSTOMER_FIRST_NAME}}",
+          estimate.jobs?.clients?.first_name || "Customer",
+        )
+        .replaceAll(
+          "{{JOB_ADDRESS}}",
+          estimate.jobs?.properties?.address_1 || "",
+        )
+        .replaceAll(
+          "{{ESTIMATE_TOTAL}}",
+          `$${Number(estimate.total).toLocaleString()}`,
+        ),
+    body = tokens(page.content.body || ""),
+    bodyHtml = tokens(page.content.body_html || "");
+  return (
+    <section className={`proposal-page ${page.page_type}`}>
+      <div className="proposal-page-brand">
+        <b>
+          ROOF<span>NUT</span>
+        </b>
+        <small>PROPOSAL</small>
+      </div>
+      {page.page_type === "cover" ? (
+        <>
+          <div className={`cover-art ${selectedPhotos[0] ? "has-photo" : ""}`}>
+            {selectedPhotos[0] ? (
+              <img src={selectedPhotos[0].signedUrl} alt="Property" />
+            ) : (
+              <span>R</span>
+            )}
+          </div>
+          <div className="cover-copy">
+            <h1>{page.content.headline || estimate.title}</h1>
+            <p>{page.content.subheadline}</p>
+            <div>
+              <b>
+                {estimate.jobs?.clients?.first_name}{" "}
+                {estimate.jobs?.clients?.last_name}
+              </b>
+              <span>
+                {estimate.jobs?.properties?.address_1}
+                <br />
+                {estimate.jobs?.properties?.city},{" "}
+                {estimate.jobs?.properties?.state}
+              </span>
+            </div>
+          </div>
+        </>
+      ) : page.page_type === "quote" ? (
+        <>
+          <h1>{page.title}</h1>
+          <div className="preview-quote">
+            {items.map((item, index) => (
+              <article key={index}>
+                <div>
+                  <b>{item.name}</b>
+                  <p>{item.description}</p>
+                </div>
+                <span>
+                  {item.quantity} {item.unit}
+                </span>
+                <b>
+                  $
+                  {(
+                    Number(item.quantity) * Number(item.unit_price)
+                  ).toLocaleString()}
+                </b>
+              </article>
+            ))}
+          </div>
+          <div className="preview-total">
+            <span>Estimate total</span>
+            <b>${Number(estimate.total).toLocaleString()}</b>
+          </div>
+        </>
+      ) : (
+        <>
+          <h1>{page.title}</h1>
+          {bodyHtml ? (
+            <div
+              className="preview-body rich-content"
+              dangerouslySetInnerHTML={{ __html: bodyHtml }}
+            />
+          ) : (
+            <div className="preview-body">
+              {body.split("\n").map((line, index) => (
+                <p key={index}>{line || " "}</p>
+              ))}
+            </div>
+          )}
+          {(page.page_type === "inspection" || selectedPhotos.length > 0) && (
+            <div
+              className={`proposal-photos count-${Math.min(selectedPhotos.length, 4)}`}
+            >
+              {selectedPhotos.length ? (
+                selectedPhotos.slice(0, 4).map((photo) => (
+                  <figure key={photo.id}>
+                    <img src={photo.signedUrl} alt={photo.filename} />
+                    <figcaption>{photo.filename}</figcaption>
+                  </figure>
+                ))
+              ) : (
+                <>
+                  <span>Choose photos from this job</span>
+                  <span>Choose photos from this job</span>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+      <footer>
+        Roofnut · A better roof. A better experience. <span>{pageNumber}</span>
+      </footer>
+    </section>
+  );
 }
 
-export default function ProposalDesigner(){
-  const {id}=useParams<{id:string}>(),router=useRouter(),{supabase,organizationId,loading,userName}=useWorkspace();
-  const [estimate,setEstimate]=useState<Estimate|null>(null),[pages,setPages]=useState<Page[]>([]),[items,setItems]=useState<Item[]>([]),[photos,setPhotos]=useState<Photo[]>([]),[selected,setSelected]=useState(""),[ready,setReady]=useState(true);
-  useEffect(()=>{if(!organizationId)return;(async()=>{const [{data:e},{data:p,error},{data:i}]=await Promise.all([supabase.from("estimates").select("title,estimate_number,total,jobs(id,title,clients(first_name,last_name),properties(address_1,city,state,postal_code))").eq("id",id).single(),supabase.from("estimate_pages").select("id,page_type,title,enabled,position,content").eq("estimate_id",id).order("position"),supabase.from("estimate_items").select("name,description,quantity,unit,unit_price").eq("estimate_id",id).order("position")]);const loaded=e as unknown as Estimate;setEstimate(loaded);if(error)setReady(false);else{setPages((p||[]) as Page[]);setSelected(p?.[0]?.id||"")}setItems((i||[]) as Item[]);if(loaded?.jobs?.id){const {data:f}=await supabase.from("files").select("id,filename,storage_path").eq("job_id",loaded.jobs.id).like("content_type","image/%").order("created_at",{ascending:false});const signed=await Promise.all(((f||[]) as Photo[]).map(async photo=>{const {data:url}=await supabase.storage.from("job-files").createSignedUrl(photo.storage_path,3600);return{...photo,signedUrl:url?.signedUrl}}));setPhotos(signed)}})()},[id,organizationId,supabase]);
-  const page=pages.find(p=>p.id===selected),enabledPages=pages.filter(p=>p.enabled);
-  async function update(target:Page,patch:Partial<Page>){setPages(current=>current.map(p=>p.id===target.id?{...p,...patch}:p));await supabase.from("estimate_pages").update({...patch,updated_at:new Date().toISOString()}).eq("id",target.id)}
-  async function content(key:string,value:string){if(page)await update(page,{content:{...page.content,[key]:value}})}
-  async function move(index:number,direction:number){const target=index+direction;if(target<0||target>=pages.length)return;const copy=[...pages];[copy[index],copy[target]]=[copy[target],copy[index]];setPages(copy);await Promise.all(copy.map((p,position)=>supabase.from("estimate_pages").update({position}).eq("id",p.id)))}
-  async function add(){const {data}=await supabase.from("estimate_pages").insert({organization_id:organizationId,estimate_id:id,page_type:"custom",title:"Custom Page",position:pages.length,content:{body:"Add your custom proposal content here."}}).select("id,page_type,title,enabled,position,content").single();if(data){setPages(c=>[...c,data as Page]);setSelected(data.id)}}
-  async function remove(){if(!page||!confirm(`Remove “${page.title}”?`))return;await supabase.from("estimate_pages").delete().eq("id",page.id);const next=pages.filter(p=>p.id!==page.id);setPages(next);setSelected(next[0]?.id||"")}
-  function togglePhoto(photoId:string){if(!page)return;const ids=(page.content.photo_ids||"").split(",").filter(Boolean),next=ids.includes(photoId)?ids.filter(item=>item!==photoId):[...ids,photoId];content("photo_ids",next.join(","))}
-  if(loading||!estimate)return <main className="auth-loading"><span>R</span></main>;
-  return <CrmShell userName={userName}><div className="proposal-designer"><aside className="proposal-pages"><div><button onClick={()=>router.push(`/estimates/${id}`)}>← Pricing</button><p className="eyebrow">PROPOSAL PAGES</p><h2>Estimate #{estimate.estimate_number}</h2></div>{!ready?<div className="task-migration"><b>Activate proposal pages</b><p>Run the newest Estimate Pages migration in Supabase.</p></div>:<><div className="page-list">{pages.map((p,index)=><article className={selected===p.id?"active":""} key={p.id} onClick={()=>setSelected(p.id)}><span>⠿</span><div><b>{p.title}</b><small>{p.page_type}</small></div><label onClick={e=>e.stopPropagation()}><input type="checkbox" checked={p.enabled} onChange={e=>update(p,{enabled:e.target.checked})}/><i/></label><div className="page-order"><button disabled={index===0} onClick={e=>{e.stopPropagation();move(index,-1)}}>↑</button><button disabled={index===pages.length-1} onClick={e=>{e.stopPropagation();move(index,1)}}>↓</button></div></article>)}</div><button className="add-page" onClick={add}>＋ Custom page</button></>}</aside><main className="page-workspace"><div className="designer-toolbar"><div><b>{page?.title||"Proposal Designer"}</b><span>{enabledPages.length} enabled pages will be included</span></div><button onClick={()=>window.print()}>Print / Save complete PDF</button></div>{page&&<div className="page-edit-layout"><section className="page-controls"><label>Page name<input value={page.title} onChange={e=>setPages(c=>c.map(p=>p.id===page.id?{...p,title:e.target.value}:p))} onBlur={e=>update(page,{title:e.target.value})}/></label>{page.page_type==="cover"&&<><label>Headline<input value={page.content.headline||""} onChange={e=>content("headline",e.target.value)}/></label><label>Subheadline<input value={page.content.subheadline||""} onChange={e=>content("subheadline",e.target.value)}/></label></>}{page.page_type!=="quote"&&<label>Page content<RichTextEditor value={page.content.body_html||page.content.body||""} onSave={html=>content("body_html",html)}/></label>}{(page.page_type==="inspection"||page.page_type==="cover"||page.page_type==="custom")&&<div className="job-photo-picker"><b>Photos from this job</b><p>{page.page_type==="cover"?"The first selected photo becomes the cover image.":"Choose up to four photos for this page."}</p><div>{photos.map(photo=>{const chosen=(page.content.photo_ids||"").split(",").includes(photo.id);return <button className={chosen?"selected":""} key={photo.id} onClick={()=>togglePhoto(photo.id)}><img src={photo.signedUrl} alt={photo.filename}/><span>{chosen?"✓ Selected":"Add photo"}</span></button>})}{!photos.length&&<small>No job photos have been uploaded yet.</small>}</div></div>}<div className="token-help"><b>Personalization tokens</b><p>Use <code>{"{{CUSTOMER_FIRST_NAME}}"}</code>, <code>{"{{JOB_ADDRESS}}"}</code>, and <code>{"{{ESTIMATE_TOTAL}}"}</code>.</p></div>{page.page_type==="custom"&&<button className="remove-page" onClick={remove}>Delete custom page</button>}</section><ProposalPage page={page} estimate={estimate} items={items} photos={photos} pageNumber={Math.max(1,enabledPages.findIndex(p=>p.id===page.id)+1)}/></div>}<div className="print-proposal">{enabledPages.map((printPage,index)=><ProposalPage key={printPage.id} page={printPage} estimate={estimate} items={items} photos={photos} pageNumber={index+1}/>)}</div></main></div></CrmShell>
+export default function ProposalDesigner() {
+  const { id } = useParams<{ id: string }>(),
+    router = useRouter(),
+    { supabase, organizationId, loading, userName } = useWorkspace();
+  const pdfPages = useRef<HTMLDivElement>(null);
+  const [estimate, setEstimate] = useState<Estimate | null>(null),
+    [pages, setPages] = useState<Page[]>([]),
+    [items, setItems] = useState<Item[]>([]),
+    [photos, setPhotos] = useState<Photo[]>([]),
+    [selected, setSelected] = useState(""),
+    [ready, setReady] = useState(true),
+    [exporting, setExporting] = useState(false);
+  useEffect(() => {
+    if (!organizationId) return;
+    (async () => {
+      const [{ data: e }, { data: p, error }, { data: i }] = await Promise.all([
+        supabase
+          .from("estimates")
+          .select(
+            "title,estimate_number,total,jobs(id,title,clients(first_name,last_name),properties(address_1,city,state,postal_code))",
+          )
+          .eq("id", id)
+          .single(),
+        supabase
+          .from("estimate_pages")
+          .select("id,page_type,title,enabled,position,content")
+          .eq("estimate_id", id)
+          .order("position"),
+        supabase
+          .from("estimate_items")
+          .select("name,description,quantity,unit,unit_price")
+          .eq("estimate_id", id)
+          .order("position"),
+      ]);
+      const loaded = e as unknown as Estimate;
+      setEstimate(loaded);
+      if (error) setReady(false);
+      else {
+        setPages((p || []) as Page[]);
+        setSelected(p?.[0]?.id || "");
+      }
+      setItems((i || []) as Item[]);
+      if (loaded?.jobs?.id) {
+        const { data: f } = await supabase
+          .from("files")
+          .select("id,filename,storage_path")
+          .eq("job_id", loaded.jobs.id)
+          .like("content_type", "image/%")
+          .order("created_at", { ascending: false });
+        const signed = await Promise.all(
+          ((f || []) as Photo[]).map(async (photo) => {
+            const { data: url } = await supabase.storage
+              .from("job-files")
+              .createSignedUrl(photo.storage_path, 3600);
+            return { ...photo, signedUrl: url?.signedUrl };
+          }),
+        );
+        setPhotos(signed);
+      }
+    })();
+  }, [id, organizationId, supabase]);
+  const page = pages.find((p) => p.id === selected),
+    enabledPages = pages.filter((p) => p.enabled);
+  async function update(target: Page, patch: Partial<Page>) {
+    setPages((current) =>
+      current.map((p) => (p.id === target.id ? { ...p, ...patch } : p)),
+    );
+    await supabase
+      .from("estimate_pages")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", target.id);
+  }
+  async function content(key: string, value: string) {
+    if (page)
+      await update(page, { content: { ...page.content, [key]: value } });
+  }
+  async function move(index: number, direction: number) {
+    const target = index + direction;
+    if (target < 0 || target >= pages.length) return;
+    const copy = [...pages];
+    [copy[index], copy[target]] = [copy[target], copy[index]];
+    setPages(copy);
+    await Promise.all(
+      copy.map((p, position) =>
+        supabase.from("estimate_pages").update({ position }).eq("id", p.id),
+      ),
+    );
+  }
+  async function add() {
+    const { data } = await supabase
+      .from("estimate_pages")
+      .insert({
+        organization_id: organizationId,
+        estimate_id: id,
+        page_type: "custom",
+        title: "Custom Page",
+        position: pages.length,
+        content: { body: "Add your custom proposal content here." },
+      })
+      .select("id,page_type,title,enabled,position,content")
+      .single();
+    if (data) {
+      setPages((c) => [...c, data as Page]);
+      setSelected(data.id);
+    }
+  }
+  async function remove() {
+    if (!page || !confirm(`Remove “${page.title}”?`)) return;
+    await supabase.from("estimate_pages").delete().eq("id", page.id);
+    const next = pages.filter((p) => p.id !== page.id);
+    setPages(next);
+    setSelected(next[0]?.id || "");
+  }
+  function togglePhoto(photoId: string) {
+    if (!page) return;
+    const ids = (page.content.photo_ids || "").split(",").filter(Boolean),
+      next = ids.includes(photoId)
+        ? ids.filter((item) => item !== photoId)
+        : [...ids, photoId];
+    content("photo_ids", next.join(","));
+  }
+  async function downloadPdf() {
+    if (!pdfPages.current || !estimate || !enabledPages.length || exporting) return;
+    setExporting(true);
+    try {
+      await document.fonts.ready;
+      await Promise.all(
+        Array.from(pdfPages.current.querySelectorAll("img")).map((image) =>
+          image.complete
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => {
+                image.onload = () => resolve();
+                image.onerror = () => resolve();
+              }),
+        ),
+      );
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "pt",
+        format: "letter",
+        compress: true,
+      });
+      const proposalPages = Array.from(
+        pdfPages.current.querySelectorAll<HTMLElement>(".proposal-page"),
+      );
+      for (let index = 0; index < proposalPages.length; index++) {
+        const canvas = await html2canvas(proposalPages[index], {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        });
+        if (index > 0) pdf.addPage("letter", "portrait");
+        pdf.addImage(
+          canvas.toDataURL("image/jpeg", 0.96),
+          "JPEG",
+          0,
+          0,
+          612,
+          792,
+          undefined,
+          "FAST",
+        );
+      }
+      const safeTitle = (
+        estimate.title || `Estimate-${estimate.estimate_number}`
+      )
+        .replace(/[^a-z0-9-_]+/gi, "-")
+        .replace(/^-|-$/g, "");
+      pdf.save(`${safeTitle || "Roofnut-Proposal"}.pdf`);
+    } catch (error) {
+      console.error(error);
+      alert("The PDF could not be created. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+  if (loading || !estimate)
+    return (
+      <main className="auth-loading">
+        <span>R</span>
+      </main>
+    );
+  return (
+    <CrmShell userName={userName}>
+      <div className="proposal-designer">
+        <aside className="proposal-pages">
+          <div>
+            <button onClick={() => router.push(`/estimates/${id}`)}>
+              ← Pricing
+            </button>
+            <p className="eyebrow">PROPOSAL PAGES</p>
+            <h2>Estimate #{estimate.estimate_number}</h2>
+          </div>
+          {!ready ? (
+            <div className="task-migration">
+              <b>Activate proposal pages</b>
+              <p>Run the newest Estimate Pages migration in Supabase.</p>
+            </div>
+          ) : (
+            <>
+              <div className="page-list">
+                {pages.map((p, index) => (
+                  <article
+                    className={selected === p.id ? "active" : ""}
+                    key={p.id}
+                    onClick={() => setSelected(p.id)}
+                  >
+                    <span>⠿</span>
+                    <div>
+                      <b>{p.title}</b>
+                      <small>{p.page_type}</small>
+                    </div>
+                    <label onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={p.enabled}
+                        onChange={(e) =>
+                          update(p, { enabled: e.target.checked })
+                        }
+                      />
+                      <i />
+                    </label>
+                    <div className="page-order">
+                      <button
+                        disabled={index === 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          move(index, -1);
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        disabled={index === pages.length - 1}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          move(index, 1);
+                        }}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <button className="add-page" onClick={add}>
+                ＋ Custom page
+              </button>
+            </>
+          )}
+        </aside>
+        <main className="page-workspace">
+          <div className="designer-toolbar">
+            <div>
+              <b>{page?.title || "Proposal Designer"}</b>
+              <span>{enabledPages.length} enabled pages will be included</span>
+            </div>
+            <button
+              disabled={exporting || !enabledPages.length}
+              onClick={downloadPdf}
+            >
+              {exporting ? "Creating your PDF…" : "↓ Download complete PDF"}
+            </button>
+          </div>
+          {page && (
+            <div className="page-edit-layout">
+              <section className="page-controls">
+                <label>
+                  Page name
+                  <input
+                    value={page.title}
+                    onChange={(e) =>
+                      setPages((c) =>
+                        c.map((p) =>
+                          p.id === page.id
+                            ? { ...p, title: e.target.value }
+                            : p,
+                        ),
+                      )
+                    }
+                    onBlur={(e) => update(page, { title: e.target.value })}
+                  />
+                </label>
+                {page.page_type === "cover" && (
+                  <>
+                    <label>
+                      Headline
+                      <input
+                        value={page.content.headline || ""}
+                        onChange={(e) => content("headline", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Subheadline
+                      <input
+                        value={page.content.subheadline || ""}
+                        onChange={(e) => content("subheadline", e.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
+                {page.page_type !== "quote" && (
+                  <label>
+                    Page content
+                    <RichTextEditor
+                      value={page.content.body_html || page.content.body || ""}
+                      onSave={(html) => content("body_html", html)}
+                    />
+                  </label>
+                )}
+                {(page.page_type === "inspection" ||
+                  page.page_type === "cover" ||
+                  page.page_type === "custom") && (
+                  <div className="job-photo-picker">
+                    <b>Photos from this job</b>
+                    <p>
+                      {page.page_type === "cover"
+                        ? "The first selected photo becomes the cover image."
+                        : "Choose up to four photos for this page."}
+                    </p>
+                    <div>
+                      {photos.map((photo) => {
+                        const chosen = (page.content.photo_ids || "")
+                          .split(",")
+                          .includes(photo.id);
+                        return (
+                          <button
+                            className={chosen ? "selected" : ""}
+                            key={photo.id}
+                            onClick={() => togglePhoto(photo.id)}
+                          >
+                            <img src={photo.signedUrl} alt={photo.filename} />
+                            <span>{chosen ? "✓ Selected" : "Add photo"}</span>
+                          </button>
+                        );
+                      })}
+                      {!photos.length && (
+                        <small>No job photos have been uploaded yet.</small>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="token-help">
+                  <b>Personalization tokens</b>
+                  <p>
+                    Use <code>{"{{CUSTOMER_FIRST_NAME}}"}</code>,{" "}
+                    <code>{"{{JOB_ADDRESS}}"}</code>, and{" "}
+                    <code>{"{{ESTIMATE_TOTAL}}"}</code>.
+                  </p>
+                </div>
+                {page.page_type === "custom" && (
+                  <button className="remove-page" onClick={remove}>
+                    Delete custom page
+                  </button>
+                )}
+              </section>
+              <ProposalPage
+                page={page}
+                estimate={estimate}
+                items={items}
+                photos={photos}
+                pageNumber={Math.max(
+                  1,
+                  enabledPages.findIndex((p) => p.id === page.id) + 1,
+                )}
+              />
+            </div>
+          )}
+          <div ref={pdfPages} className="pdf-proposal">
+            {enabledPages.map((printPage, index) => (
+              <ProposalPage
+                key={printPage.id}
+                page={printPage}
+                estimate={estimate}
+                items={items}
+                photos={photos}
+                pageNumber={index + 1}
+              />
+            ))}
+          </div>
+        </main>
+      </div>
+    </CrmShell>
+  );
 }

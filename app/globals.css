@@ -157,3 +157,8 @@ body{font-size:16px}.brand-word{font-size:15px}.ai-card b,.user-card b{font-size
   .print-proposal .proposal-page>h1{font-size:42px!important;margin-top:72px!important}
   .print-proposal .rich-content,.print-proposal .preview-body{font-size:15px!important;line-height:1.55!important}
 }
+
+/* Pixel-matched proposal PDF export surface. */
+.pdf-proposal{position:fixed;left:-10000px;top:0;width:816px;pointer-events:none}
+.pdf-proposal .proposal-page{width:816px;height:1056px;aspect-ratio:auto;box-shadow:none}
+.designer-toolbar>button:disabled{opacity:.62;cursor:wait}
