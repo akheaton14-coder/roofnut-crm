@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CrmShell } from "@/components/crm-shell";
 import { useWorkspace } from "@/lib/use-workspace";
+import { calculateFormula, FormulaMeasurement } from "@/lib/formula";
 
 type Page = {
   id: string;
@@ -15,6 +16,8 @@ type Page = {
 type Estimate = {
   title: string;
   estimate_number: number;
+  discount_amount: number;
+  tax_rate: number;
   total: number;
   jobs: {
     id: string;
@@ -29,13 +32,28 @@ type Estimate = {
   } | null;
 };
 type Item = {
-  id:string;
+  id: string;
+  product_id: string | null;
   section_id: string | null;
   name: string;
   description: string | null;
   quantity: number;
   unit: string;
   unit_price: number;
+  taxable: boolean;
+  quantity_source: "manual" | "calculated" | "override";
+  calculation_formula: string | null;
+};
+type Product = {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  unit: string;
+  unit_price: number;
+  taxable: boolean;
+  quantity_formula: string | null;
+  quantity_rounding: "ceil" | "round" | "floor" | "none";
 };
 type EstimateSection={id:string;name:string;description:string|null;client_display:"detailed"|"summary"|"hidden";position:number};
 type Photo = {
@@ -314,20 +332,24 @@ export default function ProposalDesigner() {
   const [estimate, setEstimate] = useState<Estimate | null>(null),
     [pages, setPages] = useState<Page[]>([]),
     [items, setItems] = useState<Item[]>([]),
+    [products, setProducts] = useState<Product[]>([]),
+    [measurements, setMeasurements] = useState<FormulaMeasurement[]>([]),
     [sections,setSections]=useState<EstimateSection[]>([]),
     [photos, setPhotos] = useState<Photo[]>([]),
     [selected, setSelected] = useState(""),
     [openSections,setOpenSections]=useState<Set<string>>(new Set()),
+    [showCatalog, setShowCatalog] = useState(false),
+    [catalogQuery, setCatalogQuery] = useState(""),
     [ready, setReady] = useState(true),
     [exporting, setExporting] = useState(false);
   useEffect(() => {
     if (!organizationId) return;
     (async () => {
-      const [{ data: e }, { data: p, error }, { data: i },{data:s}] = await Promise.all([
+      const [{ data: e }, { data: p, error }, { data: i },{data:s},{data:catalog}] = await Promise.all([
         supabase
           .from("estimates")
           .select(
-            "title,estimate_number,total,jobs(id,title,clients(first_name,last_name),properties(address_1,city,state,postal_code))",
+            "title,estimate_number,discount_amount,tax_rate,total,jobs(id,title,clients(first_name,last_name),properties(address_1,city,state,postal_code))",
           )
           .eq("id", id)
           .single(),
@@ -338,10 +360,11 @@ export default function ProposalDesigner() {
           .order("position"),
         supabase
           .from("estimate_items")
-          .select("id,section_id,name,description,quantity,unit,unit_price")
+          .select("id,product_id,section_id,name,description,quantity,unit,unit_price,taxable,quantity_source,calculation_formula")
           .eq("estimate_id", id)
           .order("position"),
         supabase.from("estimate_sections").select("id,name,description,client_display,position").eq("estimate_id",id).order("position"),
+        supabase.from("products").select("id,name,description,category,unit,unit_price,taxable,quantity_formula,quantity_rounding").eq("organization_id",organizationId).eq("active",true).order("category").order("name"),
       ]);
       const loaded = e as unknown as Estimate;
       setEstimate(loaded);
@@ -351,8 +374,15 @@ export default function ProposalDesigner() {
         setSelected(p?.[0]?.id || "");
       }
       setItems((i || []) as Item[]);
+      setProducts((catalog || []) as Product[]);
       setSections((s||[]) as EstimateSection[]);
       if (loaded?.jobs?.id) {
+        const [{data:fields},{data:values}] = await Promise.all([
+          supabase.from("measurement_fields").select("id,token,unit").eq("organization_id",organizationId).eq("active",true),
+          supabase.from("job_measurements").select("measurement_field_id,value").eq("job_id",loaded.jobs.id),
+        ]);
+        const valueMap = new Map((values || []).map(value => [value.measurement_field_id, Number(value.value)]));
+        setMeasurements((fields || []).map(field => ({ token: field.token, unit: field.unit, value: valueMap.get(field.id) || 0 })));
         const { data: f } = await supabase
           .from("files")
           .select("id,filename,storage_path")
@@ -388,6 +418,91 @@ export default function ProposalDesigner() {
   }
   async function updateSection(section:EstimateSection,patch:Partial<EstimateSection>){setSections(current=>current.map(item=>item.id===section.id?{...item,...patch}:item));await supabase.from("estimate_sections").update(patch).eq("id",section.id)}
   async function addSection(){const {data}=await supabase.from("estimate_sections").insert({organization_id:organizationId,estimate_id:id,name:"New Section",client_display:"summary",position:sections.length}).select("id,name,description,client_display,position").single();if(data)setSections(current=>[...current,data as EstimateSection])}
+  async function syncEstimateTotal(nextItems: Item[]) {
+    const subtotal = nextItems.reduce(
+      (sum, item) => sum + Number(item.quantity) * Number(item.unit_price),
+      0,
+    );
+    const taxable = nextItems.filter(item => item.taxable).reduce(
+      (sum, item) => sum + Number(item.quantity) * Number(item.unit_price),
+      0,
+    );
+    const taxAmount = taxable * Number(estimate?.tax_rate || 0) / 100;
+    const total = Math.max(0, subtotal - Number(estimate?.discount_amount || 0)) + taxAmount;
+    setEstimate((current) => current ? { ...current, total } : current);
+    await supabase.from("estimates").update({ subtotal, tax_amount: taxAmount, total }).eq("id", id);
+  }
+  async function updateItem(item: Item, patch: Partial<Item>) {
+    const next = items.map((row) => row.id === item.id ? { ...row, ...patch } : row);
+    setItems(next);
+    const { error } = await supabase.from("estimate_items").update(patch).eq("id", item.id);
+    if (error) return alert(error.message);
+    await syncEstimateTotal(next);
+  }
+  async function removeItem(item: Item) {
+    if (!confirm(`Remove “${item.name}” from this estimate?`)) return;
+    const next = items.filter((row) => row.id !== item.id);
+    setItems(next);
+    await supabase.from("estimate_items").delete().eq("id", item.id);
+    await syncEstimateTotal(next);
+  }
+  async function addProduct(product: Product) {
+    const section = sections[0];
+    if (!section) return alert("Add an estimate section first.");
+    let quantity = 1;
+    let quantitySource: "manual" | "calculated" = "manual";
+    if (product.quantity_formula) {
+      try {
+        quantity = calculateFormula(product.quantity_formula, measurements, product.quantity_rounding);
+        quantitySource = "calculated";
+      } catch (error) {
+        return alert(error instanceof Error ? error.message : "This product formula could not be calculated.");
+      }
+    }
+    const { data, error } = await supabase.from("estimate_items").insert({
+      organization_id: organizationId,
+      estimate_id: id,
+      section_id: section.id,
+      product_id: product.id,
+      name: product.name,
+      description: product.description,
+      quantity,
+      unit: product.unit,
+      unit_price: product.unit_price,
+      taxable: product.taxable,
+      position: items.length,
+      quantity_source: quantitySource,
+      calculation_formula: product.quantity_formula,
+      calculation_inputs: Object.fromEntries(measurements.map(value => [value.token, value.value])),
+    }).select("id,product_id,section_id,name,description,quantity,unit,unit_price,taxable,quantity_source,calculation_formula").single();
+    if (error) return alert(error.message);
+    if (data) {
+      const next = [...items, data as Item];
+      setItems(next);
+      setOpenSections(current => new Set(current).add(section.id));
+      await syncEstimateTotal(next);
+    }
+    setShowCatalog(false);
+  }
+  async function addBlankItem() {
+    const section = sections[0];
+    if (!section) return alert("Add an estimate section first.");
+    const { data, error } = await supabase.from("estimate_items").insert({
+      organization_id: organizationId,
+      estimate_id: id,
+      section_id: section.id,
+      name: "New line item",
+      quantity: 1,
+      unit: "each",
+      unit_price: 0,
+      position: items.length,
+    }).select("id,product_id,section_id,name,description,quantity,unit,unit_price,taxable,quantity_source,calculation_formula").single();
+    if (error) return alert(error.message);
+    if (data) {
+      setItems(current => [...current, data as Item]);
+      setOpenSections(current => new Set(current).add(section.id));
+    }
+  }
   async function move(index: number, direction: number) {
     const target = index + direction;
     if (target < 0 || target >= pages.length) return;
@@ -513,8 +628,8 @@ export default function ProposalDesigner() {
       <div className="proposal-designer">
         <aside className="proposal-pages">
           <div>
-            <button onClick={() => router.push(`/estimates/${id}`)}>
-              ← Pricing
+            <button onClick={() => router.push("/estimates")}>
+              ← All estimates
             </button>
             <p className="eyebrow">PROPOSAL PAGES</p>
             <h2>Estimate #{estimate.estimate_number}</h2>
@@ -636,7 +751,44 @@ export default function ProposalDesigner() {
                     />
                   </label>
                 )}
-                {page.page_type === "quote" && <div className="quote-section-editor"><div className="quote-editor-intro"><b>Estimate sections</b><p>Organize pricing internally and control exactly what the customer sees.</p></div>{sections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id),count=sectionItems.length,isOpen=openSections.has(section.id);return <article className={isOpen?"open":""} key={section.id}><button className="section-collapse" onClick={()=>setOpenSections(current=>{const next=new Set(current);if(next.has(section.id))next.delete(section.id);else next.add(section.id);return next})}>›</button><div><input value={section.name} onChange={e=>setSections(current=>current.map(item=>item.id===section.id?{...item,name:e.target.value}:item))} onBlur={e=>updateSection(section,{name:e.target.value})}/><small>{count} line item{count===1?"":"s"}</small></div><select value={section.client_display} onChange={e=>updateSection(section,{client_display:e.target.value as EstimateSection["client_display"]})}><option value="detailed">Client: Detailed</option><option value="summary">Client: Summary only</option><option value="hidden">Internal only</option></select>{isOpen&&<div className="section-item-list">{sectionItems.map(item=><div key={item.id}><span>{item.name}</span><b>${(Number(item.quantity)*Number(item.unit_price)).toLocaleString()}</b><select value={item.section_id||""} onChange={async e=>{const section_id=e.target.value;setItems(current=>current.map(row=>row.id===item.id?{...row,section_id}:row));await supabase.from("estimate_items").update({section_id}).eq("id",item.id)}}>{sections.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></div>)}{!sectionItems.length&&<p>No items in this section yet.</p>}</div>}</article>})}<button className="add-estimate-section" onClick={addSection}>＋ Add section</button><button className="edit-pricing-link" onClick={()=>router.push(`/estimates/${id}`)}>Edit line items and pricing →</button></div>}
+                {page.page_type === "quote" && (
+                  <div className="quote-section-editor">
+                    <div className="quote-editor-intro">
+                      <b>Products, pricing & sections</b>
+                      <p>Add and price the estimate here, then control exactly what the customer sees.</p>
+                    </div>
+                    <div className="designer-pricing-actions">
+                      <button onClick={() => setShowCatalog(true)}>▤ Add from product catalog</button>
+                      <button onClick={addBlankItem}>＋ Blank line item</button>
+                    </div>
+                    {sections.map((section) => {
+                      const sectionItems = items.filter((item) => item.section_id === section.id),
+                        count = sectionItems.length,
+                        isOpen = openSections.has(section.id);
+                      return (
+                        <article className={isOpen ? "open" : ""} key={section.id}>
+                          <button className="section-collapse" onClick={() => setOpenSections((current) => { const next = new Set(current); if (next.has(section.id)) next.delete(section.id); else next.add(section.id); return next; })}>›</button>
+                          <div><input value={section.name} onChange={(e) => setSections((current) => current.map((item) => item.id === section.id ? { ...item, name: e.target.value } : item))} onBlur={(e) => updateSection(section, { name: e.target.value })}/><small>{count} line item{count === 1 ? "" : "s"}</small></div>
+                          <select value={section.client_display} onChange={(e) => updateSection(section, { client_display: e.target.value as EstimateSection["client_display"] })}><option value="detailed">Client: Detailed</option><option value="summary">Client: Summary only</option><option value="hidden">Internal only</option></select>
+                          {isOpen && <div className="section-item-list pricing-item-list">
+                            {sectionItems.map((item) => <div key={item.id}>
+                              <input className="pricing-name" value={item.name} onChange={(e) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, name: e.target.value } : row))} onBlur={(e) => updateItem(item, { name: e.target.value })}/>
+                              <label>Qty<input type="number" value={item.quantity} onChange={(e) => updateItem(item, { quantity: Number(e.target.value), quantity_source: item.calculation_formula ? "override" : "manual" })}/></label>
+                              <label>Unit<input value={item.unit} onChange={(e) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, unit: e.target.value } : row))} onBlur={(e) => updateItem(item, { unit: e.target.value })}/></label>
+                              <label>Price<input type="number" value={item.unit_price} onChange={(e) => updateItem(item, { unit_price: Number(e.target.value) })}/></label>
+                              <b>${(Number(item.quantity) * Number(item.unit_price)).toLocaleString()}</b>
+                              <select value={item.section_id || ""} onChange={(e) => updateItem(item, { section_id: e.target.value })}>{sections.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}</select>
+                              <button className="remove-pricing-item" onClick={() => removeItem(item)}>×</button>
+                            </div>)}
+                            {!sectionItems.length && <p>No items in this section yet.</p>}
+                          </div>}
+                        </article>
+                      );
+                    })}
+                    <button className="add-estimate-section" onClick={addSection}>＋ Add section</button>
+                    <div className="designer-estimate-total"><span>Estimate total</span><b>${Number(estimate.total).toLocaleString()}</b></div>
+                  </div>
+                )}
                 {(page.page_type === "inspection" ||
                   page.page_type === "cover" ||
                   page.page_type === "custom") && (
@@ -711,6 +863,23 @@ export default function ProposalDesigner() {
           </div>
         </main>
       </div>
+      {showCatalog && (
+        <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowCatalog(false)}>
+          <section className="modal catalog-picker">
+            <button className="modal-close" onClick={() => setShowCatalog(false)}>×</button>
+            <p className="eyebrow">PRODUCT CATALOG</p>
+            <h2>Add products to this estimate.</h2>
+            <div className="catalog-search">⌕ <input autoFocus value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Search products, material, or labor…" /></div>
+            <div className="catalog-picker-list">
+              {Array.from(new Set(products.map((product) => product.category))).map((category) => {
+                const matches = products.filter((product) => product.category === category && `${product.name} ${product.description || ""}`.toLowerCase().includes(catalogQuery.toLowerCase()));
+                if (!matches.length) return null;
+                return <section key={category}><h3>{category}</h3>{matches.map((product) => <button key={product.id} onClick={() => addProduct(product)}><div><b>{product.name}</b><p>{product.description || `Priced per ${product.unit}`}</p></div><span>${Number(product.unit_price).toLocaleString()} / {product.unit}</span><em>＋ Add</em></button>)}</section>;
+              })}
+            </div>
+          </section>
+        </div>
+      )}
     </CrmShell>
   );
 }
