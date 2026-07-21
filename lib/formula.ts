@@ -2,6 +2,16 @@ export type FormulaMeasurement={token:string;unit:string;value:number};
 
 export function formulaTokens(formula:string){return Array.from(formula.matchAll(/\{\{([A-Z0-9_]+)\}\}/g),match=>match[1])}
 
+export function normalizeFormulaTokens(formula:string,fields:{name:string;token:string}[]){
+  const protectedTokens:string[]=[];
+  let normalized=formula.replace(/\{\{[A-Z0-9_]+\}\}/g,token=>{protectedTokens.push(token);return `@@TOKEN_${protectedTokens.length-1}@@`});
+  const escape=(value:string)=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  for(const field of [...fields].sort((a,b)=>b.name.length-a.name.length)){
+    normalized=normalized.replace(new RegExp(`\\b${escape(field.name)}\\b`,"gi"),`{{${field.token}}}`);
+  }
+  return normalized.replace(/@@TOKEN_(\d+)@@/g,(_,index)=>protectedTokens[Number(index)]);
+}
+
 export function calculateFormula(formula:string,measurements:FormulaMeasurement[],rounding="ceil"){
   const byToken=new Map(measurements.map(item=>[item.token,item]));
   let expression=formula.replace(/\{\{([A-Z0-9_]+)\}\}/g,(_,token:string)=>{

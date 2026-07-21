@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CrmShell } from "@/components/crm-shell";
 import { useWorkspace } from "@/lib/use-workspace";
-import { formulaTokens } from "@/lib/formula";
+import { formulaTokens, normalizeFormulaTokens } from "@/lib/formula";
 
 type Product = {
   id: string;
@@ -464,13 +464,32 @@ export default function ProductsPage() {
                   <textarea
                     value={editing.quantity_formula || ""}
                     onChange={(e) => setEditing({ ...editing, quantity_formula: e.target.value })}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      setEditing({
+                        ...editing,
+                        quantity_formula: normalizeFormulaTokens(
+                          e.clipboardData.getData("text"),
+                          measurementFields,
+                        ),
+                      });
+                    }}
+                    onBlur={(e) =>
+                      setEditing({
+                        ...editing,
+                        quantity_formula: normalizeFormulaTokens(
+                          e.target.value,
+                          measurementFields,
+                        ),
+                      })
+                    }
                     placeholder="Example: (({{TOTAL_ROOF_AREA}} * (1 + {{WASTE_PERCENTAGE}})) / 100) * 3"
                   />
                   <div className="calculation-options">
                     <label>Round result<select value={editing.quantity_rounding || "ceil"} onChange={(e) => setEditing({ ...editing, quantity_rounding: e.target.value as Product["quantity_rounding"] })}><option value="ceil">Round up</option><option value="round">Round normally</option><option value="floor">Round down</option><option value="none">Keep decimals</option></select></label>
                     <div><b>Measurements used</b><p>{formulaTokens(editing.quantity_formula || "").map(token => measurementFields.find(field => field.token === token)?.name || token).join(" · ") || "No calculation—estimate quantity will be entered manually."}</p></div>
                   </div>
-                  <small>Percent measurements are automatically converted—for example, 10% is used as 0.10.</small>
+                  <small>Paste JobNimbus formulas normally—measurement names are converted into tokens automatically. Percent measurements are automatically converted, so 10% is used as 0.10.</small>
                 </div>
               </div>
               <aside className="pricing-breakdown">
