@@ -338,8 +338,9 @@ export default function ProposalDesigner() {
     [photos, setPhotos] = useState<Photo[]>([]),
     [selected, setSelected] = useState(""),
     [openSections,setOpenSections]=useState<Set<string>>(new Set()),
-    [showCatalog, setShowCatalog] = useState(false),
-    [catalogQuery, setCatalogQuery] = useState(""),
+    [addingToSection, setAddingToSection] = useState<string | null>(null),
+    [itemSearch, setItemSearch] = useState(""),
+    [draggedItemId, setDraggedItemId] = useState<string | null>(null),
     [ready, setReady] = useState(true),
     [exporting, setExporting] = useState(false);
   useEffect(() => {
@@ -446,8 +447,8 @@ export default function ProposalDesigner() {
     await supabase.from("estimate_items").delete().eq("id", item.id);
     await syncEstimateTotal(next);
   }
-  async function addProduct(product: Product) {
-    const section = sections[0];
+  async function addProduct(product: Product, sectionId: string) {
+    const section = sections.find((candidate) => candidate.id === sectionId);
     if (!section) return alert("Add an estimate section first.");
     let quantity = 1;
     let quantitySource: "manual" | "calculated" = "manual";
@@ -482,16 +483,17 @@ export default function ProposalDesigner() {
       setOpenSections(current => new Set(current).add(section.id));
       await syncEstimateTotal(next);
     }
-    setShowCatalog(false);
+    setAddingToSection(null);
+    setItemSearch("");
   }
-  async function addBlankItem() {
-    const section = sections[0];
+  async function addBlankItem(sectionId: string, name = "New line item") {
+    const section = sections.find((candidate) => candidate.id === sectionId);
     if (!section) return alert("Add an estimate section first.");
     const { data, error } = await supabase.from("estimate_items").insert({
       organization_id: organizationId,
       estimate_id: id,
       section_id: section.id,
-      name: "New line item",
+      name,
       quantity: 1,
       unit: "each",
       unit_price: 0,
@@ -502,6 +504,13 @@ export default function ProposalDesigner() {
       setItems(current => [...current, data as Item]);
       setOpenSections(current => new Set(current).add(section.id));
     }
+  }
+  async function moveItemToSection(itemId: string, sectionId: string) {
+    const item = items.find((row) => row.id === itemId);
+    if (!item || item.section_id === sectionId) return;
+    setItems((current) => current.map((row) => row.id === itemId ? { ...row, section_id: sectionId } : row));
+    const { error } = await supabase.from("estimate_items").update({ section_id: sectionId }).eq("id", itemId);
+    if (error) alert(error.message);
   }
   async function move(index: number, direction: number) {
     const target = index + direction;
@@ -757,30 +766,41 @@ export default function ProposalDesigner() {
                       <b>Products, pricing & sections</b>
                       <p>Add and price the estimate here, then control exactly what the customer sees.</p>
                     </div>
-                    <div className="designer-pricing-actions">
-                      <button onClick={() => setShowCatalog(true)}>▤ Add from product catalog</button>
-                      <button onClick={addBlankItem}>＋ Blank line item</button>
-                    </div>
                     {sections.map((section) => {
                       const sectionItems = items.filter((item) => item.section_id === section.id),
                         count = sectionItems.length,
                         isOpen = openSections.has(section.id);
                       return (
-                        <article className={isOpen ? "open" : ""} key={section.id}>
+                        <article
+                          className={`${isOpen ? "open" : ""} ${draggedItemId ? "drag-target" : ""}`}
+                          key={section.id}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => {
+                            if (draggedItemId) moveItemToSection(draggedItemId, section.id);
+                            setDraggedItemId(null);
+                          }}
+                        >
                           <button className="section-collapse" onClick={() => setOpenSections((current) => { const next = new Set(current); if (next.has(section.id)) next.delete(section.id); else next.add(section.id); return next; })}>›</button>
                           <div><input value={section.name} onChange={(e) => setSections((current) => current.map((item) => item.id === section.id ? { ...item, name: e.target.value } : item))} onBlur={(e) => updateSection(section, { name: e.target.value })}/><small>{count} line item{count === 1 ? "" : "s"}</small></div>
                           <select value={section.client_display} onChange={(e) => updateSection(section, { client_display: e.target.value as EstimateSection["client_display"] })}><option value="detailed">Client: Detailed</option><option value="summary">Client: Summary only</option><option value="hidden">Internal only</option></select>
                           {isOpen && <div className="section-item-list pricing-item-list">
-                            {sectionItems.map((item) => <div key={item.id}>
-                              <input className="pricing-name" value={item.name} onChange={(e) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, name: e.target.value } : row))} onBlur={(e) => updateItem(item, { name: e.target.value })}/>
+                            {sectionItems.map((item) => <div key={item.id} draggable onDragStart={() => setDraggedItemId(item.id)} onDragEnd={() => setDraggedItemId(null)}>
+                              <span className="pricing-drag-handle">⠿</span>
+                              <div className="pricing-description"><small>{item.name}</small><textarea value={item.description || ""} placeholder="Description" onChange={(e) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, description: e.target.value } : row))} onBlur={(e) => updateItem(item, { description: e.target.value })}/></div>
                               <label>Qty<input type="number" value={item.quantity} onChange={(e) => updateItem(item, { quantity: Number(e.target.value), quantity_source: item.calculation_formula ? "override" : "manual" })}/></label>
                               <label>Unit<input value={item.unit} onChange={(e) => setItems((current) => current.map((row) => row.id === item.id ? { ...row, unit: e.target.value } : row))} onBlur={(e) => updateItem(item, { unit: e.target.value })}/></label>
                               <label>Price<input type="number" value={item.unit_price} onChange={(e) => updateItem(item, { unit_price: Number(e.target.value) })}/></label>
                               <b>${(Number(item.quantity) * Number(item.unit_price)).toLocaleString()}</b>
-                              <select value={item.section_id || ""} onChange={(e) => updateItem(item, { section_id: e.target.value })}>{sections.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}</select>
                               <button className="remove-pricing-item" onClick={() => removeItem(item)}>×</button>
                             </div>)}
                             {!sectionItems.length && <p>No items in this section yet.</p>}
+                            {addingToSection === section.id ? (
+                              <div className="inline-product-search">
+                                <input autoFocus value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="Start typing a product or service…" />
+                                <button onClick={() => { setAddingToSection(null); setItemSearch(""); }}>×</button>
+                                {!!itemSearch && <div>{products.filter((product) => `${product.name} ${product.description || ""}`.toLowerCase().includes(itemSearch.toLowerCase())).slice(0, 7).map((product) => <button key={product.id} onClick={() => addProduct(product, section.id)}><span><b>{product.name}</b><small>{product.description || product.category}</small></span><em>${Number(product.unit_price).toLocaleString()} / {product.unit}</em></button>)}<button className="custom-search-item" onClick={() => { addBlankItem(section.id, itemSearch); setAddingToSection(null); setItemSearch(""); }}>＋ Add “{itemSearch}” as a custom item</button></div>}
+                              </div>
+                            ) : <button className="section-add-item" onClick={() => { setAddingToSection(section.id); setItemSearch(""); }}>＋ Add item</button>}
                           </div>}
                         </article>
                       );
@@ -863,23 +883,6 @@ export default function ProposalDesigner() {
           </div>
         </main>
       </div>
-      {showCatalog && (
-        <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowCatalog(false)}>
-          <section className="modal catalog-picker">
-            <button className="modal-close" onClick={() => setShowCatalog(false)}>×</button>
-            <p className="eyebrow">PRODUCT CATALOG</p>
-            <h2>Add products to this estimate.</h2>
-            <div className="catalog-search">⌕ <input autoFocus value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Search products, material, or labor…" /></div>
-            <div className="catalog-picker-list">
-              {Array.from(new Set(products.map((product) => product.category))).map((category) => {
-                const matches = products.filter((product) => product.category === category && `${product.name} ${product.description || ""}`.toLowerCase().includes(catalogQuery.toLowerCase()));
-                if (!matches.length) return null;
-                return <section key={category}><h3>{category}</h3>{matches.map((product) => <button key={product.id} onClick={() => addProduct(product)}><div><b>{product.name}</b><p>{product.description || `Priced per ${product.unit}`}</p></div><span>${Number(product.unit_price).toLocaleString()} / {product.unit}</span><em>＋ Add</em></button>)}</section>;
-              })}
-            </div>
-          </section>
-        </div>
-      )}
     </CrmShell>
   );
 }
