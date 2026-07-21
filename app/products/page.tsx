@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CrmShell } from "@/components/crm-shell";
 import { useWorkspace } from "@/lib/use-workspace";
+import { formulaTokens } from "@/lib/formula";
 
 type Product = {
   id: string;
@@ -16,8 +17,11 @@ type Product = {
   unit_price: number;
   taxable: boolean;
   active: boolean;
+  quantity_formula: string | null;
+  quantity_rounding: "ceil" | "round" | "floor" | "none";
 };
 type Unit = { id?: string; value: string; label: string };
+type MeasurementField = { id: string; name: string; token: string; unit: string; field_group: string };
 const categories = ["Roofing", "Vinyl", "Hardie", "Gutters", "Misc."];
 const builtInUnits: Unit[] = [
   { value: "each", label: "Each" },
@@ -40,6 +44,8 @@ const blank: Partial<Product> = {
   unit_price: 0,
   taxable: false,
   active: true,
+  quantity_formula: null,
+  quantity_rounding: "ceil",
 };
 const money = (value: number) =>
   Number(value || 0).toLocaleString(undefined, {
@@ -70,6 +76,7 @@ export default function ProductsPage() {
   const { supabase, organizationId, loading, userName } = useWorkspace();
   const [products, setProducts] = useState<Product[]>([]),
     [customUnits, setCustomUnits] = useState<Unit[]>([]),
+    [measurementFields, setMeasurementFields] = useState<MeasurementField[]>([]),
     [editing, setEditing] = useState<Partial<Product> | null>(null),
     [query, setQuery] = useState(""),
     [category, setCategory] = useState("All"),
@@ -81,7 +88,7 @@ export default function ProductsPage() {
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id,name,description,category,product_type,unit,cost,cost_tax_rate,profit_margin,unit_price,taxable,active",
+        "id,name,description,category,product_type,unit,cost,cost_tax_rate,profit_margin,unit_price,taxable,active,quantity_formula,quantity_rounding",
       )
       .eq("organization_id", organizationId)
       .order("category")
@@ -97,6 +104,14 @@ export default function ProductsPage() {
       .eq("organization_id", organizationId)
       .order("label");
     setCustomUnits((units || []) as Unit[]);
+    const { data: measurementData } = await supabase
+      .from("measurement_fields")
+      .select("id,name,token,unit,field_group")
+      .eq("organization_id", organizationId)
+      .eq("active", true)
+      .order("field_group")
+      .order("position");
+    setMeasurementFields((measurementData || []) as MeasurementField[]);
   }
   useEffect(() => {
     load();
@@ -127,6 +142,8 @@ export default function ProductsPage() {
         unit_price: Number(calculated.price.toFixed(2)),
         taxable: false,
         active: editing.active !== false,
+        quantity_formula: editing.quantity_formula?.trim() || null,
+        quantity_rounding: editing.quantity_rounding || "ceil",
         organization_id: organizationId,
       };
     if (editing.id)
@@ -242,7 +259,7 @@ export default function ProductsPage() {
               <p>{product.description || "No description yet."}</p>
               <div className="catalog-cost-line">
                 <span>Cost ${money(product.cost)}</span>
-                <span>{product.profit_margin}% margin</span>
+                <span>{product.quantity_formula ? "⌗ Calculated quantity" : `${product.profit_margin}% margin`}</span>
               </div>
               <div className="catalog-price">
                 <b>${money(product.unit_price)}</b>
@@ -425,6 +442,36 @@ export default function ProductsPage() {
                     placeholder="Scope, material details, warranty, or customer-facing description…"
                   />
                 </label>
+                <div className="wide product-calculation-editor">
+                  <div className="calculation-heading">
+                    <div><b>Quantity calculation</b><span>Optional · uses job measurements</span></div>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        setEditing({
+                          ...editing,
+                          quantity_formula: `${editing.quantity_formula || ""}${editing.quantity_formula ? " " : ""}{{${e.target.value}}}`,
+                        });
+                      }}
+                    >
+                      <option value="">＋ Insert measurement token…</option>
+                      {measurementFields.map((field) => (
+                        <option value={field.token} key={field.id}>{field.name} ({field.unit})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <textarea
+                    value={editing.quantity_formula || ""}
+                    onChange={(e) => setEditing({ ...editing, quantity_formula: e.target.value })}
+                    placeholder="Example: (({{TOTAL_ROOF_AREA}} * (1 + {{WASTE_PERCENTAGE}})) / 100) * 3"
+                  />
+                  <div className="calculation-options">
+                    <label>Round result<select value={editing.quantity_rounding || "ceil"} onChange={(e) => setEditing({ ...editing, quantity_rounding: e.target.value as Product["quantity_rounding"] })}><option value="ceil">Round up</option><option value="round">Round normally</option><option value="floor">Round down</option><option value="none">Keep decimals</option></select></label>
+                    <div><b>Measurements used</b><p>{formulaTokens(editing.quantity_formula || "").map(token => measurementFields.find(field => field.token === token)?.name || token).join(" · ") || "No calculation—estimate quantity will be entered manually."}</p></div>
+                  </div>
+                  <small>Percent measurements are automatically converted—for example, 10% is used as 0.10.</small>
+                </div>
               </div>
               <aside className="pricing-breakdown">
                 <p>PRICING BREAKDOWN</p>

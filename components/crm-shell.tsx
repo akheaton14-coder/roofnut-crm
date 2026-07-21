@@ -3,7 +3,7 @@ import Link from "next/link";
 import {usePathname,useRouter} from "next/navigation";
 import {useEffect,useState} from "react";
 import {createClient} from "@/lib/supabase/client";
-const links=[["Command center","/","⌂"],["Clients","/clients","◎"],["Jobs","/jobs","▣"],["Calendar","#","□"],["Tasks","#","✓"],["Pipeline","/pipeline","↗"],["Estimates","/estimates","$"],["Product catalog","/products","▤"],["Production","#","◇"],["Payments","#","◫"]];
+const links=[["Command center","/","⌂"],["Clients","/clients","◎"],["Jobs","/jobs","▣"],["Calendar","#","□"],["Tasks","#","✓"],["Pipeline","/pipeline","↗"],["Estimates","/estimates","$"],["Product catalog","/products","▤"],["Measurements","/measurements","⌗"],["Production","#","◇"],["Payments","#","◫"]];
 export function CrmShell({children,userName}:{children:React.ReactNode;userName:string}){
   const pathname=usePathname(),router=useRouter(),estimateMatch=pathname.match(/^\/estimates\/([^/]+)$/),isProposalDesigner=/^\/estimates\/[^/]+\/design$/.test(pathname),[proposalPreview,setProposalPreview]=useState(false);
   useEffect(()=>setProposalPreview(false),[pathname]);
