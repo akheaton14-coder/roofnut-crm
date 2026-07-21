@@ -36,7 +36,7 @@ const blank: Partial<Product> = {
   unit: "each",
   cost: 0,
   cost_tax_rate: 7.5,
-  profit_margin: 30,
+  profit_margin: 45,
   unit_price: 0,
   taxable: false,
   active: true,
@@ -354,9 +354,15 @@ export default function ProductsPage() {
                     inputMode="decimal"
                     min="0"
                     step="0.01"
-                    value={editing.cost || 0}
+                    value={editing.cost ?? ""}
                     onChange={(e) =>
-                      setEditing({ ...editing, cost: Number(e.target.value) })
+                      setEditing({
+                        ...editing,
+                        cost:
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value),
+                      })
                     }
                   />
                 </label>
@@ -371,12 +377,15 @@ export default function ProductsPage() {
                     value={
                       editing.product_type === "labor"
                         ? 0
-                        : editing.cost_tax_rate || 0
+                        : editing.cost_tax_rate ?? ""
                     }
                     onChange={(e) =>
                       setEditing({
                         ...editing,
-                        cost_tax_rate: Number(e.target.value),
+                        cost_tax_rate:
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value),
                       })
                     }
                   />
@@ -389,11 +398,14 @@ export default function ProductsPage() {
                     min="0"
                     max="95"
                     step="1"
-                    value={editing.profit_margin || 0}
+                    value={editing.profit_margin ?? ""}
                     onChange={(e) =>
                       setEditing({
                         ...editing,
-                        profit_margin: Number(e.target.value),
+                        profit_margin:
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value),
                       })
                     }
                   />
