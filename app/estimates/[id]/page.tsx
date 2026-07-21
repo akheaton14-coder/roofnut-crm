@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CrmShell } from "@/components/crm-shell";
 import { useWorkspace } from "@/lib/use-workspace";
-import { calculateFormula, FormulaMeasurement } from "@/lib/formula";
+import { calculateFormula, formulaTokens, FormulaMeasurement } from "@/lib/formula";
 
 type Estimate = {
   id: string;
@@ -66,6 +66,7 @@ export default function EstimateEditor() {
     [products, setProducts] = useState<Product[]>([]),
     [measurements, setMeasurements] = useState<FormulaMeasurement[]>([]),
     [saving, setSaving] = useState(false),
+    [recalculating, setRecalculating] = useState(false),
     [showCatalog, setShowCatalog] = useState(false),
     [catalogQuery, setCatalogQuery] = useState("");
   async function load() {
@@ -221,6 +222,77 @@ export default function EstimateEditor() {
     await load();
     setSaving(false);
   }
+  async function recalculateQuantities() {
+    setRecalculating(true);
+    const productMap = new Map(products.map((product) => [product.id, product]));
+    try {
+      const changed = await Promise.all(
+        items
+          .filter(
+            (item) =>
+              item.calculation_formula && item.quantity_source !== "override",
+          )
+          .map(async (item) => {
+            const product = item.product_id
+              ? productMap.get(item.product_id)
+              : undefined;
+            const quantity = calculateFormula(
+              item.calculation_formula || "",
+              measurements,
+              product?.quantity_rounding || "ceil",
+            );
+            const { error } = await supabase
+              .from("estimate_items")
+              .update({
+                quantity,
+                quantity_source: "calculated",
+                calculation_inputs: Object.fromEntries(
+                  measurements.map((value) => [value.token, value.value]),
+                ),
+              })
+              .eq("id", item.id);
+            if (error) throw error;
+            return { id: item.id, quantity };
+          }),
+      );
+      const changedMap = new Map(changed.map((row) => [row.id, row.quantity]));
+      setItems((current) =>
+        current.map((item) =>
+          changedMap.has(item.id)
+            ? {
+                ...item,
+                quantity: changedMap.get(item.id) || 0,
+                quantity_source: "calculated",
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "The quantities could not be recalculated.",
+      );
+    } finally {
+      setRecalculating(false);
+    }
+  }
+  const calculatedItems = items.filter(
+    (item) => item.calculation_formula && item.quantity_source !== "override",
+  );
+  const missingMeasurementTokens = Array.from(
+    new Set(
+      calculatedItems.flatMap((item) =>
+        formulaTokens(item.calculation_formula || ""),
+      ),
+    ),
+  ).filter(
+    (token) =>
+      !measurements.some(
+        (measurement) =>
+          measurement.token === token && Number(measurement.value) !== 0,
+      ),
+  );
   if (loading || !estimate)
     return (
       <main className="auth-loading">
@@ -419,6 +491,36 @@ export default function EstimateEditor() {
               <span>Total</span>
               <b>${calculated.total.toLocaleString()}</b>
             </div>
+            {!!calculatedItems.length && (
+              <div className="estimate-recalculate">
+                <b>⌗ Measurement calculations</b>
+                {missingMeasurementTokens.length ? (
+                  <p>
+                    These measurements are blank or zero: {" "}
+                    {missingMeasurementTokens.join(", ")}
+                  </p>
+                ) : (
+                  <p>Job measurements are ready to calculate.</p>
+                )}
+                <button
+                  type="button"
+                  disabled={recalculating}
+                  onClick={recalculateQuantities}
+                >
+                  {recalculating ? "Calculating…" : "↻ Recalculate quantities"}
+                </button>
+                <button
+                  type="button"
+                  className="measurement-shortcut"
+                  onClick={() =>
+                    estimate.jobs?.id &&
+                    router.push(`/jobs/${estimate.jobs.id}/measurements`)
+                  }
+                >
+                  Edit job measurements →
+                </button>
+              </div>
+            )}
             <p>
               Approving this estimate automatically updates the job contract
               value to this total.
