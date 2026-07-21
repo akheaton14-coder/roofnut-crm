@@ -159,6 +159,6 @@ body{font-size:16px}.brand-word{font-size:15px}.ai-card b,.user-card b{font-size
 }
 
 /* Pixel-matched proposal PDF export surface. */
-.pdf-proposal{position:fixed;left:-10000px;top:0;width:816px;pointer-events:none}
-.pdf-proposal .proposal-page{width:816px;height:1056px;aspect-ratio:auto;box-shadow:none}
+.pdf-proposal{position:fixed;left:-10000px;top:0;width:var(--pdf-page-width,408px);pointer-events:none}
+.pdf-proposal .proposal-page{width:var(--pdf-page-width,408px);height:var(--pdf-page-height,528px);aspect-ratio:auto;box-shadow:none}
 .designer-toolbar>button:disabled{opacity:.62;cursor:wait}

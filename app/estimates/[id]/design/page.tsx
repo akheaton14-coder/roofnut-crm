@@ -426,6 +426,15 @@ export default function ProposalDesigner() {
     if (!pdfPages.current || !estimate || !enabledPages.length || exporting) return;
     setExporting(true);
     try {
+      const previewHeight = Math.max(440, window.innerHeight - 112);
+      const previewWidth = Math.min(
+        previewHeight * (8.5 / 11),
+        Math.max(340, window.innerWidth - 310),
+      );
+      const pageHeight = previewWidth * (11 / 8.5);
+      pdfPages.current.style.setProperty("--pdf-page-width", `${previewWidth}px`);
+      pdfPages.current.style.setProperty("--pdf-page-height", `${pageHeight}px`);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       await document.fonts.ready;
       await Promise.all(
         Array.from(pdfPages.current.querySelectorAll("img")).map((image) =>
