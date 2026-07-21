@@ -29,12 +29,15 @@ type Estimate = {
   } | null;
 };
 type Item = {
+  id:string;
+  section_id: string | null;
   name: string;
   description: string | null;
   quantity: number;
   unit: string;
   unit_price: number;
 };
+type EstimateSection={id:string;name:string;description:string|null;client_display:"detailed"|"summary"|"hidden";position:number};
 type Photo = {
   id: string;
   filename: string;
@@ -172,12 +175,14 @@ function ProposalPage({
   items,
   photos,
   pageNumber,
+  sections,
 }: {
   page: Page;
   estimate: Estimate;
   items: Item[];
   photos: Photo[];
   pageNumber: number;
+  sections: EstimateSection[];
 }) {
   const selectedIds = (page.content.photo_ids || "").split(",").filter(Boolean),
     selectedPhotos = photos.filter((photo) => selectedIds.includes(photo.id));
@@ -234,8 +239,8 @@ function ProposalPage({
       ) : page.page_type === "quote" ? (
         <>
           <h1>{page.title}</h1>
-          <div className="preview-quote">
-            {items.map((item, index) => (
+          <div className="preview-quote sectioned-quote">
+            {sections.filter(section=>section.client_display!=="hidden").map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id),sectionTotal=sectionItems.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);return <section key={section.id}><header><div><b>{section.name}</b>{section.description&&<p>{section.description}</p>}</div><strong>${sectionTotal.toLocaleString()}</strong></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
               <article key={index}>
                 <div>
                   <b>{item.name}</b>
@@ -251,7 +256,7 @@ function ProposalPage({
                   ).toLocaleString()}
                 </b>
               </article>
-            ))}
+            ))}</section>})}
           </div>
           <div className="preview-total">
             <span>Estimate total</span>
@@ -309,14 +314,16 @@ export default function ProposalDesigner() {
   const [estimate, setEstimate] = useState<Estimate | null>(null),
     [pages, setPages] = useState<Page[]>([]),
     [items, setItems] = useState<Item[]>([]),
+    [sections,setSections]=useState<EstimateSection[]>([]),
     [photos, setPhotos] = useState<Photo[]>([]),
     [selected, setSelected] = useState(""),
+    [openSections,setOpenSections]=useState<Set<string>>(new Set()),
     [ready, setReady] = useState(true),
     [exporting, setExporting] = useState(false);
   useEffect(() => {
     if (!organizationId) return;
     (async () => {
-      const [{ data: e }, { data: p, error }, { data: i }] = await Promise.all([
+      const [{ data: e }, { data: p, error }, { data: i },{data:s}] = await Promise.all([
         supabase
           .from("estimates")
           .select(
@@ -331,9 +338,10 @@ export default function ProposalDesigner() {
           .order("position"),
         supabase
           .from("estimate_items")
-          .select("name,description,quantity,unit,unit_price")
+          .select("id,section_id,name,description,quantity,unit,unit_price")
           .eq("estimate_id", id)
           .order("position"),
+        supabase.from("estimate_sections").select("id,name,description,client_display,position").eq("estimate_id",id).order("position"),
       ]);
       const loaded = e as unknown as Estimate;
       setEstimate(loaded);
@@ -343,6 +351,7 @@ export default function ProposalDesigner() {
         setSelected(p?.[0]?.id || "");
       }
       setItems((i || []) as Item[]);
+      setSections((s||[]) as EstimateSection[]);
       if (loaded?.jobs?.id) {
         const { data: f } = await supabase
           .from("files")
@@ -377,6 +386,8 @@ export default function ProposalDesigner() {
     if (page)
       await update(page, { content: { ...page.content, [key]: value } });
   }
+  async function updateSection(section:EstimateSection,patch:Partial<EstimateSection>){setSections(current=>current.map(item=>item.id===section.id?{...item,...patch}:item));await supabase.from("estimate_sections").update(patch).eq("id",section.id)}
+  async function addSection(){const {data}=await supabase.from("estimate_sections").insert({organization_id:organizationId,estimate_id:id,name:"New Section",client_display:"summary",position:sections.length}).select("id,name,description,client_display,position").single();if(data)setSections(current=>[...current,data as EstimateSection])}
   async function move(index: number, direction: number) {
     const target = index + direction;
     if (target < 0 || target >= pages.length) return;
@@ -625,6 +636,7 @@ export default function ProposalDesigner() {
                     />
                   </label>
                 )}
+                {page.page_type === "quote" && <div className="quote-section-editor"><div className="quote-editor-intro"><b>Estimate sections</b><p>Organize pricing internally and control exactly what the customer sees.</p></div>{sections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id),count=sectionItems.length,isOpen=openSections.has(section.id);return <article className={isOpen?"open":""} key={section.id}><button className="section-collapse" onClick={()=>setOpenSections(current=>{const next=new Set(current);if(next.has(section.id))next.delete(section.id);else next.add(section.id);return next})}>›</button><div><input value={section.name} onChange={e=>setSections(current=>current.map(item=>item.id===section.id?{...item,name:e.target.value}:item))} onBlur={e=>updateSection(section,{name:e.target.value})}/><small>{count} line item{count===1?"":"s"}</small></div><select value={section.client_display} onChange={e=>updateSection(section,{client_display:e.target.value as EstimateSection["client_display"]})}><option value="detailed">Client: Detailed</option><option value="summary">Client: Summary only</option><option value="hidden">Internal only</option></select>{isOpen&&<div className="section-item-list">{sectionItems.map(item=><div key={item.id}><span>{item.name}</span><b>${(Number(item.quantity)*Number(item.unit_price)).toLocaleString()}</b><select value={item.section_id||""} onChange={async e=>{const section_id=e.target.value;setItems(current=>current.map(row=>row.id===item.id?{...row,section_id}:row));await supabase.from("estimate_items").update({section_id}).eq("id",item.id)}}>{sections.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></div>)}{!sectionItems.length&&<p>No items in this section yet.</p>}</div>}</article>})}<button className="add-estimate-section" onClick={addSection}>＋ Add section</button><button className="edit-pricing-link" onClick={()=>router.push(`/estimates/${id}`)}>Edit line items and pricing →</button></div>}
                 {(page.page_type === "inspection" ||
                   page.page_type === "cover" ||
                   page.page_type === "custom") && (
@@ -680,6 +692,7 @@ export default function ProposalDesigner() {
                   1,
                   enabledPages.findIndex((p) => p.id === page.id) + 1,
                 )}
+                sections={sections}
               />
             </div>
           )}
@@ -692,6 +705,7 @@ export default function ProposalDesigner() {
                 items={items}
                 photos={photos}
                 pageNumber={index + 1}
+                sections={sections}
               />
             ))}
           </div>
