@@ -354,7 +354,8 @@ export default function ProductsPage() {
                     inputMode="decimal"
                     min="0"
                     step="0.01"
-                    value={editing.cost ?? ""}
+                    value={editing.cost || ""}
+                    placeholder="Enter base cost"
                     onChange={(e) =>
                       setEditing({
                         ...editing,
@@ -376,8 +377,11 @@ export default function ProductsPage() {
                     disabled={editing.product_type === "labor"}
                     value={
                       editing.product_type === "labor"
-                        ? 0
-                        : editing.cost_tax_rate ?? ""
+                        ? ""
+                        : editing.cost_tax_rate || ""
+                    }
+                    placeholder={
+                      editing.product_type === "labor" ? "No tax" : "Enter tax %"
                     }
                     onChange={(e) =>
                       setEditing({
@@ -398,7 +402,8 @@ export default function ProductsPage() {
                     min="0"
                     max="95"
                     step="1"
-                    value={editing.profit_margin ?? ""}
+                    value={editing.profit_margin || ""}
+                    placeholder="Enter margin %"
                     onChange={(e) =>
                       setEditing({
                         ...editing,
