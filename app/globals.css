@@ -189,19 +189,19 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .quote-section-editor>article.drag-target{border-color:#25c9c7;background:#f3ffff}.section-item-list.pricing-item-list>div{grid-template-columns:20px minmax(180px,1.5fr) 62px 68px 78px 75px 24px}.pricing-drag-handle{cursor:grab;color:#20aaa9;font-size:16px!important}.pricing-item-list>div[draggable=true]:active .pricing-drag-handle{cursor:grabbing}.pricing-description{display:flex;flex-direction:column;gap:4px}.pricing-description small{color:#527174!important;font-size:8px!important;font-weight:900;text-transform:uppercase;letter-spacing:.4px}.pricing-description textarea{width:100%;min-height:45px;border:1px solid #d7e2e0;border-radius:6px;padding:7px;resize:vertical;color:#1d3335;font:10px/1.35 Arial}.section-add-item{grid-column:1/-1;width:100%;height:34px;margin-top:7px;border:1px dashed #5fc9c6;border-radius:7px;background:#f5ffff;color:#008d91;font-size:9px;font-weight:900}.inline-product-search{position:relative;grid-column:1/-1!important;display:grid!important;grid-template-columns:1fr 32px!important;gap:6px!important;padding:8px!important;border:1px solid #72d2cf!important;border-radius:9px;background:#f5ffff}.inline-product-search>input{height:38px!important;background:#fff}.inline-product-search>button{border:0;background:transparent;color:#8a999a;font-size:18px}.inline-product-search>div{position:absolute;z-index:12;top:52px;left:8px;right:46px;display:grid;padding:6px;border:1px solid #cde1df;border-radius:9px;background:#fff;box-shadow:0 14px 35px #073f4924}.inline-product-search>div>button{display:flex;justify-content:space-between;gap:14px;padding:9px;border:0;border-bottom:1px solid #edf2f1;background:#fff;text-align:left}.inline-product-search>div>button:hover{background:#efffff}.inline-product-search>div span{display:flex;flex-direction:column;gap:3px}.inline-product-search>div b{font-size:10px}.inline-product-search>div small{color:#728486;font-size:8px}.inline-product-search>div em{color:#008f94;font-size:9px;font-style:normal;font-weight:800}.inline-product-search>div .custom-search-item{justify-content:flex-start;color:#008f94;font-size:9px;font-weight:900}
 /* Letter-page-relative proposal typography: preview and PDF keep identical proportions. */
 .proposal-page{container-type:inline-size}
-.proposal-page:not(.cover){padding:7cqw 8cqw 7cqw}
+.proposal-page:not(.cover){padding:7% 8% 7%}
 .proposal-page:not(.cover):before{width:26cqw;height:26cqw;right:-14cqw;top:-14cqw}
-.proposal-page:not(.cover) .proposal-page-brand b{font-size:2.8cqw;letter-spacing:.18cqw}
-.proposal-page:not(.cover) .proposal-page-brand small{font-size:1cqw;letter-spacing:.28cqw}
-.proposal-page:not(.cover)>h1{margin:5.5cqw 0 4cqw;font-size:4cqw;line-height:1.05}
-.proposal-page:not(.cover) .preview-body,.proposal-page:not(.cover) .rich-content{font-size:1.48cqw;line-height:1.42;color:#263b3e}
+.proposal-page:not(.cover) .proposal-page-brand b{font-size:3.5cqw;letter-spacing:.18cqw}
+.proposal-page:not(.cover) .proposal-page-brand small{font-size:1.15cqw;letter-spacing:.28cqw}
+.proposal-page:not(.cover)>h1{margin:5cqw 0 3.5cqw;font-size:5.3cqw;line-height:1.05}
+.proposal-page:not(.cover) .preview-body,.proposal-page:not(.cover) .rich-content{width:100%;font-size:2.05cqw;line-height:1.42;color:#263b3e}
 .proposal-page:not(.cover) .rich-content p,.proposal-page:not(.cover) .preview-body p{margin:0 0 1.6cqw}
 .proposal-page:not(.cover) .rich-content div{margin:0 0 1.1cqw}
 .proposal-page:not(.cover) .rich-content h1,.proposal-page:not(.cover) .rich-content h2,.proposal-page:not(.cover) .rich-content h3{margin:2.3cqw 0 .8cqw;line-height:1.15}
-.proposal-page:not(.cover) .rich-content h2{font-size:1.85cqw}.proposal-page:not(.cover) .rich-content h3{font-size:1.6cqw}
+.proposal-page:not(.cover) .rich-content h2{font-size:2.45cqw}.proposal-page:not(.cover) .rich-content h3{font-size:2.15cqw}
 .proposal-page:not(.cover) .rich-content ol,.proposal-page:not(.cover) .rich-content ul{margin:1cqw 0 1.8cqw;padding-left:3.5cqw}
 .proposal-page:not(.cover) .rich-content li{margin:.25cqw 0}
-.proposal-page:not(.cover) footer{left:8cqw;right:8cqw;bottom:3.3cqw;padding-top:1.2cqw;font-size:1cqw}
+.proposal-page:not(.cover) footer{left:8%;right:8%;bottom:3%;padding-top:1.2cqw;font-size:1.15cqw}
 .proposal-page:not(.cover) .proposal-photos{gap:1.8cqw;margin-top:3cqw}.proposal-page:not(.cover) .proposal-photos img{height:21cqw}
 .rich-canvas{font-size:11px;line-height:1.48}.rich-canvas div{margin:0 0 8px}.rich-canvas h2{margin:14px 0 6px}.rich-canvas p{margin:0 0 8px}.rich-canvas ol,.rich-canvas ul{margin:7px 0 10px}
 .proposal-page:not(.cover) .preview-quote article{grid-template-columns:1fr 12cqw 14cqw;gap:1.5cqw;padding:1.8cqw 1.2cqw;font-size:1.4cqw}.proposal-page:not(.cover) .preview-quote article p{margin:.6cqw 0;font-size:1.15cqw}.proposal-page:not(.cover) .sectioned-quote>section{margin-bottom:2.2cqw}.proposal-page:not(.cover) .sectioned-quote>section>header{padding:1.8cqw}.proposal-page:not(.cover) .sectioned-quote>section>header p{font-size:1.1cqw}.proposal-page:not(.cover) .sectioned-quote>section>header strong{font-size:1.5cqw}.proposal-page:not(.cover) .preview-total{gap:5cqw;margin-top:3cqw;font-size:2cqw}
