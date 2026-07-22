@@ -19,6 +19,7 @@ type Estimate = {
   discount_amount: number;
   tax_rate: number;
   total: number;
+  profit_margin: number;
   jobs: {
     id: string;
     title: string;
@@ -40,6 +41,8 @@ type Item = {
   quantity: number;
   unit: string;
   unit_price: number;
+  unit_cost: number;
+  product_type: "material" | "labor";
   taxable: boolean;
   quantity_source: "manual" | "calculated" | "override";
   calculation_formula: string | null;
@@ -51,6 +54,9 @@ type Product = {
   category: string;
   unit: string;
   unit_price: number;
+  cost: number;
+  cost_tax_rate: number;
+  product_type: "material" | "labor";
   taxable: boolean;
   quantity_formula: string | null;
   quantity_rounding: "ceil" | "round" | "floor" | "none";
@@ -275,7 +281,7 @@ function ProposalPage({
         section.client_display !== "hidden" &&
         (!quoteScope || section.scope_id === quoteScope.id),
     ),
-    quoteTotal = quoteSections.reduce(
+    quoteTotal = sections.filter((section)=>!quoteScope || section.scope_id===quoteScope.id).reduce(
       (total, section) =>
         total +
         items
@@ -325,7 +331,7 @@ function ProposalPage({
         <>
           <h1>{quoteScope?.name || page.title}</h1>
           <div className="preview-quote sectioned-quote">
-            {quoteSections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id),sectionTotal=sectionItems.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);return <section key={section.id}><header><div><b>{section.name}</b>{section.description&&<p>{section.description}</p>}</div><strong>${sectionTotal.toLocaleString()}</strong></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
+            {quoteSections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id);return <section key={section.id}><header><div><b>{section.name}</b>{section.description&&<p>{section.description}</p>}</div></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
               <article key={index}>
                 <div>
                   <b>{item.name}</b>
@@ -413,6 +419,7 @@ export default function ProposalDesigner() {
     [itemSearch, setItemSearch] = useState(""),
     [draggedItemId, setDraggedItemId] = useState<string | null>(null),
     [showPhotoPicker, setShowPhotoPicker] = useState(false),
+    [marginDraft, setMarginDraft] = useState(45),
     [ready, setReady] = useState(true),
     [exporting, setExporting] = useState(false);
   useEffect(() => {
@@ -422,7 +429,7 @@ export default function ProposalDesigner() {
         supabase
           .from("estimates")
           .select(
-            "title,estimate_number,discount_amount,tax_rate,total,jobs(id,title,clients(first_name,last_name),properties(address_1,city,state,postal_code))",
+            "title,estimate_number,discount_amount,tax_rate,total,profit_margin,jobs(id,title,clients(first_name,last_name),properties(address_1,city,state,postal_code))",
           )
           .eq("id", id)
           .single(),
@@ -433,15 +440,16 @@ export default function ProposalDesigner() {
           .order("position"),
         supabase
           .from("estimate_items")
-          .select("id,product_id,section_id,name,description,quantity,unit,unit_price,taxable,quantity_source,calculation_formula")
+          .select("id,product_id,section_id,name,description,quantity,unit,unit_price,unit_cost,product_type,taxable,quantity_source,calculation_formula")
           .eq("estimate_id", id)
           .order("position"),
         supabase.from("estimate_sections").select("id,scope_id,name,description,client_display,position").eq("estimate_id",id).order("position"),
-        supabase.from("products").select("id,name,description,category,unit,unit_price,taxable,quantity_formula,quantity_rounding").eq("organization_id",organizationId).eq("active",true).order("category").order("name"),
+        supabase.from("products").select("id,name,description,category,product_type,unit,cost,cost_tax_rate,unit_price,taxable,quantity_formula,quantity_rounding").eq("organization_id",organizationId).eq("active",true).order("category").order("name"),
         supabase.from("estimate_scopes").select("id,name,client_display,position").eq("estimate_id",id).order("position"),
       ]);
       const loaded = e as unknown as Estimate;
       setEstimate(loaded);
+      setMarginDraft(Number(loaded?.profit_margin ?? 45));
       if (error) setReady(false);
       else {
         setPages((p || []) as Page[]);
@@ -539,6 +547,25 @@ export default function ProposalDesigner() {
     setEstimate((current) => current ? { ...current, total } : current);
     await supabase.from("estimates").update({ subtotal, tax_amount: taxAmount, total }).eq("id", id);
   }
+  function pricesAtMargin(margin:number){
+    const safeMargin=Math.min(90,Math.max(0,margin));
+    return items.map(item=>item.unit_cost>0?{...item,unit_price:Number((Number(item.unit_cost)/(1-safeMargin/100)).toFixed(2))}:item);
+  }
+  function previewMargin(margin:number){
+    setMarginDraft(margin);
+    const next=pricesAtMargin(margin);
+    setItems(next);
+    const subtotal=next.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);
+    setEstimate(current=>current?{...current,profit_margin:margin,total:Math.max(0,subtotal-Number(current.discount_amount||0))}:current);
+  }
+  async function saveMargin(){
+    const next=pricesAtMargin(marginDraft);
+    await Promise.all([
+      supabase.from("estimates").update({profit_margin:marginDraft}).eq("id",id),
+      ...next.map(item=>supabase.from("estimate_items").update({unit_price:item.unit_price}).eq("id",item.id)),
+    ]);
+    await syncEstimateTotal(next);
+  }
   async function updateItem(item: Item, patch: Partial<Item>) {
     const next = items.map((row) => row.id === item.id ? { ...row, ...patch } : row);
     setItems(next);
@@ -576,12 +603,14 @@ export default function ProposalDesigner() {
       quantity,
       unit: product.unit,
       unit_price: product.unit_price,
+      unit_cost: Number(product.cost) * (1 + Number(product.cost_tax_rate) / 100),
+      product_type: product.product_type,
       taxable: product.taxable,
       position: items.length,
       quantity_source: quantitySource,
       calculation_formula: product.quantity_formula,
       calculation_inputs: Object.fromEntries(measurements.map(value => [value.token, value.value])),
-    }).select("id,product_id,section_id,name,description,quantity,unit,unit_price,taxable,quantity_source,calculation_formula").single();
+    }).select("id,product_id,section_id,name,description,quantity,unit,unit_price,unit_cost,product_type,taxable,quantity_source,calculation_formula").single();
     if (error) return alert(error.message);
     if (data) {
       const next = [...items, data as Item];
@@ -603,8 +632,10 @@ export default function ProposalDesigner() {
       quantity: 1,
       unit: "each",
       unit_price: 0,
+      unit_cost: 0,
+      product_type: "material",
       position: items.length,
-    }).select("id,product_id,section_id,name,description,quantity,unit,unit_price,taxable,quantity_source,calculation_formula").single();
+    }).select("id,product_id,section_id,name,description,quantity,unit,unit_price,unit_cost,product_type,taxable,quantity_source,calculation_formula").single();
     if (error) return alert(error.message);
     if (data) {
       setItems(current => [...current, data as Item]);
@@ -748,6 +779,11 @@ export default function ProposalDesigner() {
       setExporting(false);
     }
   }
+  const materialCost=items.filter(item=>item.product_type==="material").reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_cost||0),0),
+    laborCost=items.filter(item=>item.product_type==="labor").reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_cost||0),0),
+    cogs=materialCost+laborCost,
+    estimateSubtotal=items.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0),
+    estimatedProfit=estimateSubtotal-cogs;
   if (loading || !estimate)
     return (
       <main className="auth-loading">
@@ -949,7 +985,7 @@ export default function ProposalDesigner() {
                     {scopes.filter((scope) => scope.id === (selectedQuoteSection || scopes[0]?.id)).map((scope) => <div className="active-scope" key={scope.id}>
                       <div className="scope-settings">
                         <label>Tab name<input value={scope.name} onChange={(event)=>setScopes(current=>current.map(item=>item.id===scope.id?{...item,name:event.target.value}:item))} onBlur={(event)=>updateScope(scope,{name:event.target.value})}/></label>
-                        <label>Client page<select value={scope.client_display} onChange={(event)=>updateScope(scope,{client_display:event.target.value as EstimateScope["client_display"]})}><option value="detailed">Include this scope</option><option value="summary">Include scope total only</option><option value="hidden">Internal only</option></select></label>
+                        <label>Client visibility<button className={`visibility-toggle ${scope.client_display!=="hidden"?"visible":""}`} onClick={()=>updateScope(scope,{client_display:scope.client_display==="hidden"?"detailed":"hidden"})}><span>{scope.client_display!=="hidden"?"◉":"⊘"}</span>{scope.client_display!=="hidden"?"Visible to client":"Internal only"}</button></label>
                       </div>
                       {sections.filter((section) => section.scope_id === scope.id).map((section) => {
                       const sectionItems = items.filter((item) => item.section_id === section.id),
@@ -967,7 +1003,7 @@ export default function ProposalDesigner() {
                         >
                           <button className="section-collapse" onClick={() => setOpenSections((current) => {const next=new Set(current);if(next.has(section.id))next.delete(section.id);else next.add(section.id);return next})}>›</button>
                           <div><input value={section.name} onChange={(e) => setSections((current) => current.map((item) => item.id === section.id ? { ...item, name: e.target.value } : item))} onBlur={(e) => updateSection(section, { name: e.target.value })}/><small>{count} line item{count === 1 ? "" : "s"}</small></div>
-                          <select value={section.client_display} onChange={(e) => updateSection(section, { client_display: e.target.value as EstimateSection["client_display"] })}><option value="detailed">Show section details</option><option value="summary">Show section total only</option><option value="hidden">Hide section from client</option></select>
+                          <button className={`visibility-toggle section-visibility ${section.client_display!=="hidden"?"visible":""}`} title="Toggle client visibility" onClick={()=>updateSection(section,{client_display:section.client_display==="hidden"?"detailed":"hidden"})}><span>{section.client_display!=="hidden"?"◉":"⊘"}</span>{section.client_display!=="hidden"?"Visible":"Hidden"}</button>
                           {isOpen && <div className="section-item-list pricing-item-list">
                             {sectionItems.map((item) => <div key={item.id} draggable onDragStart={() => setDraggedItemId(item.id)} onDragEnd={() => setDraggedItemId(null)}>
                               <span className="pricing-drag-handle">⠿</span>
@@ -992,7 +1028,20 @@ export default function ProposalDesigner() {
                     })}
                     <button className="add-estimate-section" onClick={()=>addSection(scope.id)}>＋ Add section inside {scope.name}</button>
                     </div>)}
-                    <div className="designer-estimate-total"><span>Estimate total</span><b>${Number(estimate.total).toLocaleString()}</b></div>
+                    <section className="estimate-profitability">
+                      <div className="margin-control">
+                        <div><b>Profit margin</b><span>{marginDraft.toFixed(1)}%</span></div>
+                        <input type="range" min="0" max="80" step=".25" value={marginDraft} onChange={(event)=>previewMargin(Number(event.target.value))} onPointerUp={saveMargin} onBlur={saveMargin}/>
+                        <small>Slide to reprice every costed line item while preserving its cost.</small>
+                      </div>
+                      <div className="profit-breakdown">
+                        <div><b>${materialCost.toLocaleString(undefined,{maximumFractionDigits:2})}</b><span>Material</span></div>
+                        <div><b>${laborCost.toLocaleString(undefined,{maximumFractionDigits:2})}</b><span>Labor</span></div>
+                        <div><b>${cogs.toLocaleString(undefined,{maximumFractionDigits:2})}</b><span>COGS</span></div>
+                        <div><b>${estimatedProfit.toLocaleString(undefined,{maximumFractionDigits:2})}</b><span>Profit</span></div>
+                      </div>
+                    </section>
+                    <div className="designer-estimate-total sticky-job-total"><span>Total job price</span><b>${Number(estimate.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</b></div>
                   </div>
                 )}
                 {(page.page_type === "cover" ||
