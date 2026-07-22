@@ -232,6 +232,7 @@ function ProposalPage({
   photos,
   pageNumber,
   sections,
+  quoteSection,
 }: {
   page: Page;
   estimate: Estimate;
@@ -239,6 +240,7 @@ function ProposalPage({
   photos: Photo[];
   pageNumber: number;
   sections: EstimateSection[];
+  quoteSection?: EstimateSection;
 }) {
   const selectedIds = (page.content.photo_ids || "").split(",").filter(Boolean),
     selectedPhotos = selectedIds
@@ -266,7 +268,22 @@ function ProposalPage({
           `$${Number(estimate.total).toLocaleString()}`,
         ),
     body = tokens(page.content.body || ""),
-    bodyHtml = cleanRichHtml(tokens(page.content.body_html || ""));
+    bodyHtml = cleanRichHtml(tokens(page.content.body_html || "")),
+    quoteSections = quoteSection
+      ? [quoteSection]
+      : sections.filter((section) => section.client_display !== "hidden"),
+    quoteTotal = quoteSections.reduce(
+      (total, section) =>
+        total +
+        items
+          .filter((item) => item.section_id === section.id)
+          .reduce(
+            (sum, item) =>
+              sum + Number(item.quantity) * Number(item.unit_price),
+            0,
+          ),
+      0,
+    );
   return (
     <section className={`proposal-page ${page.page_type}`}>
       <div className="proposal-page-brand">
@@ -303,9 +320,9 @@ function ProposalPage({
         </>
       ) : page.page_type === "quote" ? (
         <>
-          <h1>{page.title}</h1>
+          <h1>{quoteSection?.name || page.title}</h1>
           <div className="preview-quote sectioned-quote">
-            {sections.filter(section=>section.client_display!=="hidden").map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id),sectionTotal=sectionItems.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);return <section key={section.id}><header><div><b>{section.name}</b>{section.description&&<p>{section.description}</p>}</div><strong>${sectionTotal.toLocaleString()}</strong></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
+            {quoteSections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id),sectionTotal=sectionItems.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);return <section key={section.id}><header><div><b>{section.name}</b>{section.description&&<p>{section.description}</p>}</div><strong>${sectionTotal.toLocaleString()}</strong></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
               <article key={index}>
                 <div>
                   <b>{item.name}</b>
@@ -324,8 +341,8 @@ function ProposalPage({
             ))}</section>})}
           </div>
           <div className="preview-total">
-            <span>Estimate total</span>
-            <b>${Number(estimate.total).toLocaleString()}</b>
+            <span>{quoteSection ? "Scope total" : "Estimate total"}</span>
+            <b>${Number(quoteSection ? quoteTotal : estimate.total).toLocaleString()}</b>
           </div>
         </>
       ) : (
@@ -384,6 +401,7 @@ export default function ProposalDesigner() {
     [products, setProducts] = useState<Product[]>([]),
     [measurements, setMeasurements] = useState<FormulaMeasurement[]>([]),
     [sections,setSections]=useState<EstimateSection[]>([]),
+    [selectedQuoteSection, setSelectedQuoteSection] = useState(""),
     [photos, setPhotos] = useState<Photo[]>([]),
     [selected, setSelected] = useState(""),
     [openSections,setOpenSections]=useState<Set<string>>(new Set()),
@@ -426,7 +444,13 @@ export default function ProposalDesigner() {
       }
       setItems((i || []) as Item[]);
       setProducts((catalog || []) as Product[]);
-      setSections((s||[]) as EstimateSection[]);
+      const loadedSections = (s || []) as EstimateSection[];
+      setSections(loadedSections);
+      setSelectedQuoteSection((current) =>
+        current && loadedSections.some((section) => section.id === current)
+          ? current
+          : loadedSections[0]?.id || "",
+      );
       if (loaded?.jobs?.id) {
         const [{data:fields},{data:values}] = await Promise.all([
           supabase.from("measurement_fields").select("id,token,unit").eq("organization_id",organizationId).eq("active",true),
@@ -453,7 +477,22 @@ export default function ProposalDesigner() {
     })();
   }, [id, organizationId, supabase]);
   const page = pages.find((p) => p.id === selected),
-    enabledPages = pages.filter((p) => p.enabled);
+    enabledPages = pages.filter((p) => p.enabled),
+    generatedPages = enabledPages.flatMap<{
+      key: string;
+      page: Page;
+      quoteSection?: EstimateSection;
+    }>((proposalPage) =>
+      proposalPage.page_type === "quote"
+        ? sections
+            .filter((section) => section.client_display !== "hidden")
+            .map((section) => ({
+              key: `${proposalPage.id}-${section.id}`,
+              page: proposalPage,
+              quoteSection: section,
+            }))
+        : [{ key: proposalPage.id, page: proposalPage, quoteSection: undefined }],
+    );
   async function update(target: Page, patch: Partial<Page>) {
     setPages((current) =>
       current.map((p) => (p.id === target.id ? { ...p, ...patch } : p)),
@@ -468,7 +507,7 @@ export default function ProposalDesigner() {
       await update(page, { content: { ...page.content, [key]: value } });
   }
   async function updateSection(section:EstimateSection,patch:Partial<EstimateSection>){setSections(current=>current.map(item=>item.id===section.id?{...item,...patch}:item));await supabase.from("estimate_sections").update(patch).eq("id",section.id)}
-  async function addSection(){const {data}=await supabase.from("estimate_sections").insert({organization_id:organizationId,estimate_id:id,name:"New Section",client_display:"summary",position:sections.length}).select("id,name,description,client_display,position").single();if(data)setSections(current=>[...current,data as EstimateSection])}
+  async function addSection(){const {data}=await supabase.from("estimate_sections").insert({organization_id:organizationId,estimate_id:id,name:"New Scope",client_display:"detailed",position:sections.length}).select("id,name,description,client_display,position").single();if(data){const section=data as EstimateSection;setSections(current=>[...current,section]);setSelectedQuoteSection(section.id);setOpenSections(current=>new Set(current).add(section.id))}}
   async function syncEstimateTotal(nextItems: Item[]) {
     const subtotal = nextItems.reduce(
       (sum, item) => sum + Number(item.quantity) * Number(item.unit_price),
@@ -624,7 +663,7 @@ export default function ProposalDesigner() {
     );
   }
   async function downloadPdf() {
-    if (!pdfPages.current || !estimate || !enabledPages.length || exporting) return;
+    if (!pdfPages.current || !estimate || !generatedPages.length || exporting) return;
     setExporting(true);
     try {
       const previewHeight = Math.max(440, window.innerHeight - 112);
@@ -771,10 +810,10 @@ export default function ProposalDesigner() {
           <div className="designer-toolbar">
             <div>
               <b>{page?.title || "Proposal Designer"}</b>
-              <span>{enabledPages.length} enabled pages will be included</span>
+              <span>{generatedPages.length} generated pages will be included</span>
             </div>
             <button
-              disabled={exporting || !enabledPages.length}
+              disabled={exporting || !generatedPages.length}
               onClick={downloadPdf}
             >
               {exporting ? "Creating your PDF…" : "↓ Download complete PDF"}
@@ -874,16 +913,32 @@ export default function ProposalDesigner() {
                 {page.page_type === "quote" && (
                   <div className="quote-section-editor">
                     <div className="quote-editor-intro">
-                      <b>Products, pricing & sections</b>
-                      <p>Add and price the estimate here, then control exactly what the customer sees.</p>
+                      <b>Scope tabs</b>
+                      <p>Build each scope separately. Every client-visible tab becomes its own pricing page.</p>
                     </div>
-                    {sections.map((section) => {
+                    <div className="scope-tabs">
+                      {sections.map((section) => (
+                        <button
+                          className={selectedQuoteSection === section.id ? "active" : ""}
+                          key={section.id}
+                          onClick={() => {
+                            setSelectedQuoteSection(section.id);
+                            setOpenSections((current) => new Set(current).add(section.id));
+                          }}
+                        >
+                          <span>{section.name}</span>
+                          <small>{items.filter((item) => item.section_id === section.id).length}</small>
+                        </button>
+                      ))}
+                      <button className="add-scope-tab" title="Add another scope" onClick={addSection}>＋</button>
+                    </div>
+                    {sections.filter((section) => section.id === (selectedQuoteSection || sections[0]?.id)).map((section) => {
                       const sectionItems = items.filter((item) => item.section_id === section.id),
                         count = sectionItems.length,
-                        isOpen = openSections.has(section.id);
+                        isOpen = true;
                       return (
                         <article
-                          className={`${isOpen ? "open" : ""} ${draggedItemId ? "drag-target" : ""}`}
+                          className={`scope-tab-panel open ${draggedItemId ? "drag-target" : ""}`}
                           key={section.id}
                           onDragOver={(event) => event.preventDefault()}
                           onDrop={() => {
@@ -891,9 +946,9 @@ export default function ProposalDesigner() {
                             setDraggedItemId(null);
                           }}
                         >
-                          <button className="section-collapse" onClick={() => setOpenSections((current) => { const next = new Set(current); if (next.has(section.id)) next.delete(section.id); else next.add(section.id); return next; })}>›</button>
+                          <button className="section-collapse" aria-hidden="true">›</button>
                           <div><input value={section.name} onChange={(e) => setSections((current) => current.map((item) => item.id === section.id ? { ...item, name: e.target.value } : item))} onBlur={(e) => updateSection(section, { name: e.target.value })}/><small>{count} line item{count === 1 ? "" : "s"}</small></div>
-                          <select value={section.client_display} onChange={(e) => updateSection(section, { client_display: e.target.value as EstimateSection["client_display"] })}><option value="detailed">Client: Detailed</option><option value="summary">Client: Summary only</option><option value="hidden">Internal only</option></select>
+                          <select value={section.client_display} onChange={(e) => updateSection(section, { client_display: e.target.value as EstimateSection["client_display"] })}><option value="detailed">Client page: Detailed pricing</option><option value="summary">Client page: Scope total only</option><option value="hidden">Internal: Don’t generate page</option></select>
                           {isOpen && <div className="section-item-list pricing-item-list">
                             {sectionItems.map((item) => <div key={item.id} draggable onDragStart={() => setDraggedItemId(item.id)} onDragEnd={() => setDraggedItemId(null)}>
                               <span className="pricing-drag-handle">⠿</span>
@@ -916,7 +971,6 @@ export default function ProposalDesigner() {
                         </article>
                       );
                     })}
-                    <button className="add-estimate-section" onClick={addSection}>＋ Add section</button>
                     <div className="designer-estimate-total"><span>Estimate total</span><b>${Number(estimate.total).toLocaleString()}</b></div>
                   </div>
                 )}
@@ -972,22 +1026,27 @@ export default function ProposalDesigner() {
                 photos={photos}
                 pageNumber={Math.max(
                   1,
-                  enabledPages.findIndex((p) => p.id === page.id) + 1,
+                  generatedPages.findIndex((entry) =>
+                    entry.page.id === page.id &&
+                    (page.page_type !== "quote" || entry.quoteSection?.id === selectedQuoteSection)
+                  ) + 1,
                 )}
                 sections={sections}
+                quoteSection={page.page_type === "quote" ? sections.find((section) => section.id === (selectedQuoteSection || sections[0]?.id)) : undefined}
               />
             </div>
           )}
           <div ref={pdfPages} className="pdf-proposal">
-            {enabledPages.map((printPage, index) => (
+            {generatedPages.map((generatedPage, index) => (
               <ProposalPage
-                key={printPage.id}
-                page={printPage}
+                key={generatedPage.key}
+                page={generatedPage.page}
                 estimate={estimate}
                 items={items}
                 photos={photos}
                 pageNumber={index + 1}
                 sections={sections}
+                quoteSection={generatedPage.quoteSection}
               />
             ))}
           </div>
