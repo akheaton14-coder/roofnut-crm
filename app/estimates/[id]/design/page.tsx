@@ -241,7 +241,16 @@ function ProposalPage({
   sections: EstimateSection[];
 }) {
   const selectedIds = (page.content.photo_ids || "").split(",").filter(Boolean),
-    selectedPhotos = photos.filter((photo) => selectedIds.includes(photo.id));
+    selectedPhotos = selectedIds
+      .map((photoId) => photos.find((photo) => photo.id === photoId))
+      .filter((photo): photo is Photo => Boolean(photo)),
+    photoCaptions = (() => {
+      try {
+        return JSON.parse(page.content.photo_captions || "{}") as Record<string, string>;
+      } catch {
+        return {};
+      }
+    })();
   const tokens = (value: string) =>
       (value || "")
         .replaceAll(
@@ -342,7 +351,9 @@ function ProposalPage({
                 selectedPhotos.slice(0, 4).map((photo) => (
                   <figure key={photo.id}>
                     <img src={photo.signedUrl} alt={photo.filename} />
-                    <figcaption>{photo.filename}</figcaption>
+                    <figcaption>
+                      {photoCaptions[photo.id] || photo.filename}
+                    </figcaption>
                   </figure>
                 ))
               ) : (
@@ -379,6 +390,7 @@ export default function ProposalDesigner() {
     [addingToSection, setAddingToSection] = useState<string | null>(null),
     [itemSearch, setItemSearch] = useState(""),
     [draggedItemId, setDraggedItemId] = useState<string | null>(null),
+    [showPhotoPicker, setShowPhotoPicker] = useState(false),
     [ready, setReady] = useState(true),
     [exporting, setExporting] = useState(false);
   useEffect(() => {
@@ -595,6 +607,22 @@ export default function ProposalDesigner() {
         : [...ids, photoId];
     content("photo_ids", next.join(","));
   }
+  function photoCaptions() {
+    try {
+      return JSON.parse(page?.content.photo_captions || "{}") as Record<
+        string,
+        string
+      >;
+    } catch {
+      return {};
+    }
+  }
+  function updatePhotoCaption(photoId: string, caption: string) {
+    content(
+      "photo_captions",
+      JSON.stringify({ ...photoCaptions(), [photoId]: caption }),
+    );
+  }
   async function downloadPdf() {
     if (!pdfPages.current || !estimate || !enabledPages.length || exporting) return;
     setExporting(true);
@@ -789,7 +817,8 @@ export default function ProposalDesigner() {
                     </label>
                   </>
                 )}
-                {page.page_type !== "quote" && (
+                {page.page_type !== "quote" &&
+                  page.page_type !== "inspection" && (
                   <label>
                     Page content
                     <RichTextEditor
@@ -797,6 +826,50 @@ export default function ProposalDesigner() {
                       onSave={(html) => content("body_html", html)}
                     />
                   </label>
+                )}
+                {page.page_type === "inspection" && (
+                  <div className="inspection-photo-editor">
+                    <div className="inspection-photo-heading">
+                      <div>
+                        <b>Inspection photos</b>
+                        <p>Add up to four job photos and describe each one.</p>
+                      </div>
+                      <button onClick={() => setShowPhotoPicker(true)}>
+                        ＋ Add photos from job
+                      </button>
+                    </div>
+                    <div className="inspection-photo-rows">
+                      {(page.content.photo_ids || "")
+                        .split(",")
+                        .filter(Boolean)
+                        .map((photoId) => photos.find((photo) => photo.id === photoId))
+                        .filter((photo): photo is Photo => Boolean(photo))
+                        .map((photo) => (
+                          <article key={photo.id}>
+                            <img src={photo.signedUrl} alt={photo.filename} />
+                            <label>
+                              Photo description
+                              <textarea
+                                value={photoCaptions()[photo.id] || ""}
+                                placeholder="Describe the damage, condition, or recommendation…"
+                                onChange={(event) =>
+                                  updatePhotoCaption(photo.id, event.target.value)
+                                }
+                              />
+                            </label>
+                            <button onClick={() => togglePhoto(photo.id)}>×</button>
+                          </article>
+                        ))}
+                      {!(page.content.photo_ids || "").split(",").filter(Boolean)
+                        .length && (
+                        <div className="inspection-photo-empty">
+                          <span>▧</span>
+                          <b>No inspection photos selected</b>
+                          <p>Choose photos already uploaded to this job.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
                 {page.page_type === "quote" && (
                   <div className="quote-section-editor">
@@ -847,8 +920,7 @@ export default function ProposalDesigner() {
                     <div className="designer-estimate-total"><span>Estimate total</span><b>${Number(estimate.total).toLocaleString()}</b></div>
                   </div>
                 )}
-                {(page.page_type === "inspection" ||
-                  page.page_type === "cover" ||
+                {(page.page_type === "cover" ||
                   page.page_type === "custom") && (
                   <div className="job-photo-picker">
                     <b>Photos from this job</b>
@@ -921,6 +993,60 @@ export default function ProposalDesigner() {
           </div>
         </main>
       </div>
+      {showPhotoPicker && page?.page_type === "inspection" && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget && setShowPhotoPicker(false)
+          }
+        >
+          <section className="modal inspection-photo-modal">
+            <button
+              className="modal-close"
+              onClick={() => setShowPhotoPicker(false)}
+            >
+              ×
+            </button>
+            <p className="eyebrow">JOB PHOTO GALLERY</p>
+            <h2>Select inspection photos.</h2>
+            <p>Choose up to four photos for this proposal page.</p>
+            <div>
+              {photos.map((photo) => {
+                const selectedIds = (page.content.photo_ids || "")
+                    .split(",")
+                    .filter(Boolean),
+                  selectedPhoto = selectedIds.includes(photo.id),
+                  atLimit = selectedIds.length >= 4 && !selectedPhoto;
+                return (
+                  <button
+                    className={selectedPhoto ? "selected" : ""}
+                    disabled={atLimit}
+                    key={photo.id}
+                    onClick={() => togglePhoto(photo.id)}
+                  >
+                    <img src={photo.signedUrl} alt={photo.filename} />
+                    <span>{selectedPhoto ? "✓ Selected" : "Select photo"}</span>
+                  </button>
+                );
+              })}
+              {!photos.length && (
+                <div className="inspection-photo-empty">
+                  <b>No job photos yet.</b>
+                  <p>Upload photos to the job first, then return here.</p>
+                </div>
+              )}
+            </div>
+            <footer>
+              <span>
+                {(page.content.photo_ids || "").split(",").filter(Boolean)
+                  .length}{" "}
+                of 4 selected
+              </span>
+              <button onClick={() => setShowPhotoPicker(false)}>Done</button>
+            </footer>
+          </section>
+        </div>
+      )}
     </CrmShell>
   );
 }
