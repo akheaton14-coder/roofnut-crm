@@ -19,6 +19,7 @@ type Estimate = {
   discount_amount: number;
   tax_rate: number;
   total: number;
+  total_override: number | null;
   profit_margin: number;
   jobs: {
     id: string;
@@ -433,7 +434,7 @@ export default function ProposalDesigner() {
         supabase
           .from("estimates")
           .select(
-            "title,estimate_number,discount_amount,tax_rate,total,profit_margin,jobs(id,title,clients(first_name,last_name),properties(address_1,city,state,postal_code))",
+            "title,estimate_number,discount_amount,tax_rate,total,total_override,profit_margin,jobs(id,title,clients(first_name,last_name),properties(address_1,city,state,postal_code))",
           )
           .eq("id", id)
           .single(),
@@ -548,7 +549,8 @@ export default function ProposalDesigner() {
       0,
     );
     const taxAmount = taxable * Number(estimate?.tax_rate || 0) / 100;
-    const total = Math.max(0, subtotal - Number(estimate?.discount_amount || 0)) + taxAmount;
+    const calculatedTotal = Math.max(0, subtotal - Number(estimate?.discount_amount || 0)) + taxAmount;
+    const total = estimate?.total_override == null ? calculatedTotal : Number(estimate.total_override);
     setEstimate((current) => current ? { ...current, total } : current);
     await supabase.from("estimates").update({ subtotal, tax_amount: taxAmount, total }).eq("id", id);
   }
@@ -562,12 +564,12 @@ export default function ProposalDesigner() {
     const next=pricesAtMargin(margin);
     setItems(next);
     const subtotal=next.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);
-    setEstimate(current=>current?{...current,profit_margin:margin,total:Math.max(0,subtotal-Number(current.discount_amount||0))}:current);
+    setEstimate(current=>current?{...current,profit_margin:margin,total_override:null,total:Math.max(0,subtotal-Number(current.discount_amount||0))}:current);
   }
   async function saveMargin(){
     const next=pricesAtMargin(marginDraft);
     await Promise.all([
-      supabase.from("estimates").update({profit_margin:marginDraft}).eq("id",id),
+      supabase.from("estimates").update({profit_margin:marginDraft,total_override:null}).eq("id",id),
       ...next.map(item=>supabase.from("estimate_items").update({unit_price:item.unit_price}).eq("id",item.id)),
     ]);
     await syncEstimateTotal(next);
@@ -582,14 +584,13 @@ export default function ProposalDesigner() {
     if(pricedBase<=0)return alert("Add priced line items before overriding the total.");
     const multiplier=(target+Number(estimate?.discount_amount||0))/pricedBase;
     const next=items.map(item=>({...item,unit_price:Number((Number(item.unit_price)*multiplier).toFixed(2))}));
-    const nextSubtotal=next.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);
-    const nextMargin=nextSubtotal>0?Math.max(0,Math.min(99,(nextSubtotal-cogs)/nextSubtotal*100)):0;
-    setItems(next);setMarginDraft(nextMargin);setMarginInput(String(Number(nextMargin.toFixed(2))));setShowPriceOverride(false);
+    const nextMargin=Math.max(0,Math.min(99,(target-cogs)/target*100));
+    setItems(next);setMarginDraft(nextMargin);setMarginInput(String(Number(nextMargin.toFixed(2))));setShowPriceOverride(false);setEstimate(current=>current?{...current,total_override:target,total:target,profit_margin:nextMargin}:current);
     await Promise.all([
-      supabase.from("estimates").update({profit_margin:nextMargin}).eq("id",id),
+      supabase.from("estimates").update({profit_margin:nextMargin,total_override:target,total:target}).eq("id",id),
       ...next.map(item=>supabase.from("estimate_items").update({unit_price:item.unit_price}).eq("id",item.id)),
     ]);
-    await syncEstimateTotal(next);
+    await supabase.from("estimates").update({profit_margin:nextMargin,total_override:target,total:target}).eq("id",id);
   }
   async function updateItem(item: Item, patch: Partial<Item>) {
     const next = items.map((row) => row.id === item.id ? { ...row, ...patch } : row);
