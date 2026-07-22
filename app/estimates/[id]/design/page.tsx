@@ -331,7 +331,7 @@ function ProposalPage({
       ) : page.page_type === "quote" ? (
         <>
           <h1>{quoteScope?.name || page.title}</h1>
-          {quoteScope?.description && <p className="preview-scope-description">{quoteScope.description}</p>}
+          {quoteScope?.description && <div className="preview-scope-description"><small>Scope of work</small><p>{quoteScope.description}</p></div>}
           <div className="preview-quote sectioned-quote">
             {quoteSections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id);return <section key={section.id}><header><div><b>{section.name}</b>{!quoteScope?.description&&section.description&&<p>{section.description}</p>}</div></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
               <article key={index}>
