@@ -208,14 +208,14 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 /* Stable proposal sheet geometry. Blocks size from the paper itself, not its workspace. */
 .proposal-page:not(.cover){padding:0}
 .proposal-page:not(.cover) .proposal-page-brand{width:84%;margin:7% auto 0}
-.proposal-page:not(.cover) .proposal-page-brand b{font-size:20px;letter-spacing:1px}
-.proposal-page:not(.cover) .proposal-page-brand small{font-size:7px;letter-spacing:2px}
-.proposal-page:not(.cover)>h1{width:84%;margin:34px auto 22px;font-size:28px;line-height:1.05}
-.proposal-page:not(.cover) .preview-body,.proposal-page:not(.cover) .rich-content{width:84%;margin-left:auto;margin-right:auto;font-size:10px;line-height:1.45}
-.proposal-page:not(.cover) .rich-content p,.proposal-page:not(.cover) .preview-body p{margin:0 0 10px}
+.proposal-page:not(.cover) .proposal-page-brand b{font-size:15px;letter-spacing:.8px}
+.proposal-page:not(.cover) .proposal-page-brand small{font-size:5px;letter-spacing:1.5px}
+.proposal-page:not(.cover)>h1{width:84%;margin:27px auto 18px;font-size:20px;line-height:1.05}
+.proposal-page:not(.cover) .preview-body,.proposal-page:not(.cover) .rich-content{width:84%;margin-left:auto;margin-right:auto;font-size:7.5px;line-height:1.42}
+.proposal-page:not(.cover) .rich-content p,.proposal-page:not(.cover) .preview-body p{margin:0 0 8px}
 .proposal-page:not(.cover) .rich-content div{margin:0 0 7px}
 .proposal-page:not(.cover) .rich-content h1,.proposal-page:not(.cover) .rich-content h2,.proposal-page:not(.cover) .rich-content h3{margin:15px 0 5px;line-height:1.15}
-.proposal-page:not(.cover) .rich-content h2{font-size:14px}.proposal-page:not(.cover) .rich-content h3{font-size:12px}
+.proposal-page:not(.cover) .rich-content h2{font-size:10px}.proposal-page:not(.cover) .rich-content h3{font-size:9px}
 .proposal-page:not(.cover) .rich-content ol,.proposal-page:not(.cover) .rich-content ul{margin:7px 0 11px;padding-left:24px}
 .proposal-page:not(.cover) .rich-content li{margin:2px 0}
 .proposal-page:not(.cover) footer{left:8%;right:8%;bottom:3%;padding-top:7px;font-size:7px}
