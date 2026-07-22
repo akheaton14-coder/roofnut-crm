@@ -63,6 +63,19 @@ type Photo = {
   signedUrl?: string;
 };
 
+function cleanRichHtml(html: string) {
+  return (html || "")
+    .replace(/<\/?(?:font|span)\b[^>]*>/gi, "")
+    .replace(/<div\b[^>]*>/gi, "<p>")
+    .replace(/<\/div>/gi, "</p>")
+    .replace(
+      /\s(?:style|class|id|face|size|color|width|height)=(?:"[^"]*"|'[^']*')/gi,
+      "",
+    )
+    .replace(/<p>\s*<\/p>/gi, "")
+    .replace(/<p>\s*<br\s*\/?\s*>\s*<\/p>/gi, "<br>");
+}
+
 function RichTextEditor({
   value,
   onSave,
@@ -72,8 +85,9 @@ function RichTextEditor({
 }) {
   const editor = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (editor.current && editor.current.innerHTML !== value)
-      editor.current.innerHTML = value;
+    const cleanValue = cleanRichHtml(value);
+    if (editor.current && editor.current.innerHTML !== cleanValue)
+      editor.current.innerHTML = cleanValue;
   }, [value]);
   function command(name: string, arg?: string) {
     document.execCommand(name, false, arg);
@@ -175,10 +189,19 @@ function RichTextEditor({
         suppressContentEditableWarning
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        onBlur={(e) => onSave(e.currentTarget.innerHTML)}
+        onBlur={(e) => {
+          const clean = cleanRichHtml(e.currentTarget.innerHTML);
+          e.currentTarget.innerHTML = clean;
+          onSave(clean);
+        }}
         onPaste={() =>
           setTimeout(
-            () => editor.current && onSave(editor.current.innerHTML),
+            () => {
+              if (!editor.current) return;
+              const clean = cleanRichHtml(editor.current.innerHTML);
+              editor.current.innerHTML = clean;
+              onSave(clean);
+            },
             0,
           )
         }
@@ -219,7 +242,7 @@ function ProposalPage({
           `$${Number(estimate.total).toLocaleString()}`,
         ),
     body = tokens(page.content.body || ""),
-    bodyHtml = tokens(page.content.body_html || "");
+    bodyHtml = cleanRichHtml(tokens(page.content.body_html || ""));
   return (
     <section className={`proposal-page ${page.page_type}`}>
       <div className="proposal-page-brand">
