@@ -61,7 +61,7 @@ type Product = {
   quantity_formula: string | null;
   quantity_rounding: "ceil" | "round" | "floor" | "none";
 };
-type EstimateScope={id:string;name:string;client_display:"detailed"|"summary"|"hidden";position:number};
+type EstimateScope={id:string;name:string;description:string|null;client_display:"detailed"|"summary"|"hidden";position:number};
 type EstimateSection={id:string;scope_id:string|null;name:string;description:string|null;client_display:"detailed"|"summary"|"hidden";position:number};
 type Photo = {
   id: string;
@@ -330,8 +330,9 @@ function ProposalPage({
       ) : page.page_type === "quote" ? (
         <>
           <h1>{quoteScope?.name || page.title}</h1>
+          {quoteScope?.description && <p className="preview-scope-description">{quoteScope.description}</p>}
           <div className="preview-quote sectioned-quote">
-            {quoteSections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id);return <section key={section.id}><header><div><b>{section.name}</b>{section.description&&<p>{section.description}</p>}</div></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
+            {quoteSections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id);return <section key={section.id}><header><div><b>{section.name}</b>{!quoteScope?.description&&section.description&&<p>{section.description}</p>}</div></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
               <article key={index}>
                 <div>
                   <b>{item.name}</b>
@@ -420,6 +421,9 @@ export default function ProposalDesigner() {
     [draggedItemId, setDraggedItemId] = useState<string | null>(null),
     [showPhotoPicker, setShowPhotoPicker] = useState(false),
     [marginDraft, setMarginDraft] = useState(45),
+    [marginInput, setMarginInput] = useState("45"),
+    [showPriceOverride, setShowPriceOverride] = useState(false),
+    [overrideDraft, setOverrideDraft] = useState(""),
     [ready, setReady] = useState(true),
     [exporting, setExporting] = useState(false);
   useEffect(() => {
@@ -445,11 +449,12 @@ export default function ProposalDesigner() {
           .order("position"),
         supabase.from("estimate_sections").select("id,scope_id,name,description,client_display,position").eq("estimate_id",id).order("position"),
         supabase.from("products").select("id,name,description,category,product_type,unit,cost,cost_tax_rate,unit_price,taxable,quantity_formula,quantity_rounding").eq("organization_id",organizationId).eq("active",true).order("category").order("name"),
-        supabase.from("estimate_scopes").select("id,name,client_display,position").eq("estimate_id",id).order("position"),
+        supabase.from("estimate_scopes").select("id,name,description,client_display,position").eq("estimate_id",id).order("position"),
       ]);
       const loaded = e as unknown as Estimate;
       setEstimate(loaded);
       setMarginDraft(Number(loaded?.profit_margin ?? 45));
+      setMarginInput(String(Number(loaded?.profit_margin ?? 45)));
       if (error) setReady(false);
       else {
         setPages((p || []) as Page[]);
@@ -523,7 +528,7 @@ export default function ProposalDesigner() {
   async function updateSection(section:EstimateSection,patch:Partial<EstimateSection>){setSections(current=>current.map(item=>item.id===section.id?{...item,...patch}:item));await supabase.from("estimate_sections").update(patch).eq("id",section.id)}
   async function updateScope(scope:EstimateScope,patch:Partial<EstimateScope>){setScopes(current=>current.map(item=>item.id===scope.id?{...item,...patch}:item));await supabase.from("estimate_scopes").update(patch).eq("id",scope.id)}
   async function addScope(){
-    const {data,error}=await supabase.from("estimate_scopes").insert({organization_id:organizationId,estimate_id:id,name:"New Scope",client_display:"detailed",position:scopes.length}).select("id,name,client_display,position").single();
+    const {data,error}=await supabase.from("estimate_scopes").insert({organization_id:organizationId,estimate_id:id,name:"New Scope",description:"",client_display:"detailed",position:scopes.length}).select("id,name,description,client_display,position").single();
     if(error)return alert(error.message);
     if(data){const scope=data as EstimateScope;setScopes(current=>[...current,scope]);setSelectedQuoteSection(scope.id);await addSection(scope.id,"New Section")}
   }
@@ -553,6 +558,7 @@ export default function ProposalDesigner() {
   }
   function previewMargin(margin:number){
     setMarginDraft(margin);
+    setMarginInput(String(Number(margin.toFixed(2))));
     const next=pricesAtMargin(margin);
     setItems(next);
     const subtotal=next.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);
@@ -562,6 +568,25 @@ export default function ProposalDesigner() {
     const next=pricesAtMargin(marginDraft);
     await Promise.all([
       supabase.from("estimates").update({profit_margin:marginDraft}).eq("id",id),
+      ...next.map(item=>supabase.from("estimate_items").update({unit_price:item.unit_price}).eq("id",item.id)),
+    ]);
+    await syncEstimateTotal(next);
+  }
+  async function applyPriceOverride(){
+    const target=Number(overrideDraft);
+    if(!Number.isFinite(target)||target<=0)return alert("Enter a valid total price.");
+    const subtotal=items.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);
+    const taxable=items.filter(item=>item.taxable).reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);
+    const rate=Number(estimate?.tax_rate||0)/100;
+    const pricedBase=subtotal+taxable*rate;
+    if(pricedBase<=0)return alert("Add priced line items before overriding the total.");
+    const multiplier=(target+Number(estimate?.discount_amount||0))/pricedBase;
+    const next=items.map(item=>({...item,unit_price:Number((Number(item.unit_price)*multiplier).toFixed(2))}));
+    const nextSubtotal=next.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);
+    const nextMargin=nextSubtotal>0?Math.max(0,Math.min(99,(nextSubtotal-cogs)/nextSubtotal*100)):0;
+    setItems(next);setMarginDraft(nextMargin);setMarginInput(String(Number(nextMargin.toFixed(2))));setShowPriceOverride(false);
+    await Promise.all([
+      supabase.from("estimates").update({profit_margin:nextMargin}).eq("id",id),
       ...next.map(item=>supabase.from("estimate_items").update({unit_price:item.unit_price}).eq("id",item.id)),
     ]);
     await syncEstimateTotal(next);
@@ -986,6 +1011,7 @@ export default function ProposalDesigner() {
                       <div className="scope-settings">
                         <label>Tab name<input value={scope.name} onChange={(event)=>setScopes(current=>current.map(item=>item.id===scope.id?{...item,name:event.target.value}:item))} onBlur={(event)=>updateScope(scope,{name:event.target.value})}/></label>
                         <label>Client visibility<button className={`visibility-toggle ${scope.client_display!=="hidden"?"visible":""}`} onClick={()=>updateScope(scope,{client_display:scope.client_display==="hidden"?"detailed":"hidden"})}><span>{scope.client_display!=="hidden"?"◉":"⊘"}</span>{scope.client_display!=="hidden"?"Visible to client":"Internal only"}</button></label>
+                        <label className="scope-description-field">Scope description<textarea value={scope.description||""} placeholder="Describe the complete scope of work shown on this pricing page…" onChange={(event)=>setScopes(current=>current.map(item=>item.id===scope.id?{...item,description:event.target.value}:item))} onBlur={(event)=>updateScope(scope,{description:event.target.value})}/></label>
                       </div>
                       {sections.filter((section) => section.scope_id === scope.id).map((section) => {
                       const sectionItems = items.filter((item) => item.section_id === section.id),
@@ -1030,9 +1056,11 @@ export default function ProposalDesigner() {
                     </div>)}
                     <section className="estimate-profitability">
                       <div className="margin-control">
-                        <div><b>Profit margin</b><span>{marginDraft.toFixed(1)}%</span></div>
+                        <div><b>Profit margin</b><label className="margin-number"><input type="number" min="0" max="90" step=".25" placeholder="45" value={marginInput} onChange={(event)=>{const value=event.target.value;setMarginInput(value);if(value!=="")previewMargin(Math.min(90,Math.max(0,Number(value))))}} onBlur={()=>{if(marginInput==="")setMarginInput(String(Number(marginDraft.toFixed(2))));else saveMargin()}}/><span>%</span></label></div>
                         <input type="range" min="0" max="80" step=".25" value={marginDraft} onChange={(event)=>previewMargin(Number(event.target.value))} onPointerUp={saveMargin} onBlur={saveMargin}/>
                         <small>Slide to reprice every costed line item while preserving its cost.</small>
+                        <button className="override-price-button" onClick={()=>{setOverrideDraft(Number(estimate.total).toFixed(2));setShowPriceOverride(current=>!current)}}>Override total price</button>
+                        {showPriceOverride&&<div className="price-override-panel"><label>New total price<input autoFocus inputMode="decimal" value={overrideDraft} onChange={(event)=>setOverrideDraft(event.target.value)} onKeyDown={(event)=>event.key==="Enter"&&applyPriceOverride()}/></label><div><span>Calculated GP</span><b>{Number(overrideDraft)>0?Math.max(0,(Number(overrideDraft)-cogs)/Number(overrideDraft)*100).toFixed(2):"0.00"}%</b></div><button onClick={applyPriceOverride}>Apply price</button></div>}
                       </div>
                       <div className="profit-breakdown">
                         <div><b>${materialCost.toLocaleString(undefined,{maximumFractionDigits:2})}</b><span>Material</span></div>
