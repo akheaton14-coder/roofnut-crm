@@ -220,3 +220,13 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .proposal-page:not(.cover) .rich-content li{margin:2px 0}
 .proposal-page:not(.cover) footer{left:8%;right:8%;bottom:3%;padding-top:7px;font-size:7px}
 .proposal-page:not(.cover) .preview-quote{width:84%;margin-left:auto;margin-right:auto}.proposal-page:not(.cover) .preview-quote article{grid-template-columns:1fr 80px 90px;gap:10px;padding:10px 8px;font-size:9px}.proposal-page:not(.cover) .preview-quote article p{margin:4px 0;font-size:8px}.proposal-page:not(.cover) .sectioned-quote>section{margin-bottom:13px}.proposal-page:not(.cover) .sectioned-quote>section>header{padding:10px}.proposal-page:not(.cover) .sectioned-quote>section>header p{font-size:8px}.proposal-page:not(.cover) .sectioned-quote>section>header strong{font-size:10px}.proposal-page:not(.cover) .preview-total{width:84%;margin:16px auto 0;gap:30px;font-size:13px}
+.page-controls .rich-editor{border-color:#cbd9d8;border-radius:7px;box-shadow:0 1px 2px rgba(5,63,73,.04)}
+.page-controls .rich-toolbar{min-height:43px;padding:6px 10px;gap:3px;background:#fff}
+.page-controls .rich-toolbar span[role=button]{height:31px;padding:0 9px;color:#405255;font-size:11px;font-weight:600}
+.page-controls .rich-toolbar span[role=button]:hover{background:#eaf7f6;color:#007f84}
+.page-controls .rich-canvas{min-height:430px;padding:18px 20px;color:#3f5053;font:400 12px/1.5 Arial,sans-serif;letter-spacing:0;text-transform:none}
+.page-controls .rich-canvas b,.page-controls .rich-canvas strong{font-weight:700}
+.page-controls .rich-canvas h1,.page-controls .rich-canvas h2,.page-controls .rich-canvas h3{font-family:Arial,sans-serif;font-weight:700}
+.page-controls .rich-canvas ol,.proposal-page .rich-content ol{display:block;list-style-type:decimal;list-style-position:outside}
+.page-controls .rich-canvas ul,.proposal-page .rich-content ul{display:block;list-style-type:disc;list-style-position:outside}
+.page-controls .rich-canvas li,.proposal-page .rich-content li{display:list-item}
