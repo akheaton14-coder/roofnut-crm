@@ -94,16 +94,18 @@ function RichTextEditor({
     )
       editor.current.innerHTML = cleanValue;
   }, [value]);
-  function saveCurrent() {
+  function saveCurrent(normalizeDom = false) {
     if (!editor.current) return;
     const clean = cleanRichHtml(editor.current.innerHTML);
-    editor.current.innerHTML = clean;
+    if (normalizeDom && editor.current.innerHTML !== clean) {
+      editor.current.innerHTML = clean;
+    }
     onSave(clean);
   }
   function command(name: string, arg?: string) {
     document.execCommand(name, false, arg);
     editor.current?.focus();
-    requestAnimationFrame(saveCurrent);
+    requestAnimationFrame(() => saveCurrent(false));
   }
   function addLink() {
     const url = prompt("Paste the link address");
@@ -203,21 +205,17 @@ function RichTextEditor({
         onClick={(e) => e.stopPropagation()}
         onInput={() => {
           if (saveTimer.current) clearTimeout(saveTimer.current);
-          saveTimer.current = setTimeout(saveCurrent, 400);
+          saveTimer.current = setTimeout(() => saveCurrent(false), 400);
         }}
         onBlur={(e) => {
           if (saveTimer.current) clearTimeout(saveTimer.current);
-          const clean = cleanRichHtml(e.currentTarget.innerHTML);
-          e.currentTarget.innerHTML = clean;
-          onSave(clean);
+          saveCurrent(true);
         }}
         onPaste={() =>
           setTimeout(
             () => {
               if (!editor.current) return;
-              const clean = cleanRichHtml(editor.current.innerHTML);
-              editor.current.innerHTML = clean;
-              onSave(clean);
+              saveCurrent(true);
             },
             0,
           )
