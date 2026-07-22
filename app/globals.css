@@ -205,3 +205,18 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .proposal-page:not(.cover) .proposal-photos{gap:1.8cqw;margin-top:3cqw}.proposal-page:not(.cover) .proposal-photos img{height:21cqw}
 .rich-canvas{font-size:11px;line-height:1.48}.rich-canvas div{margin:0 0 8px}.rich-canvas h2{margin:14px 0 6px}.rich-canvas p{margin:0 0 8px}.rich-canvas ol,.rich-canvas ul{margin:7px 0 10px}
 .proposal-page:not(.cover) .preview-quote article{grid-template-columns:1fr 12cqw 14cqw;gap:1.5cqw;padding:1.8cqw 1.2cqw;font-size:1.4cqw}.proposal-page:not(.cover) .preview-quote article p{margin:.6cqw 0;font-size:1.15cqw}.proposal-page:not(.cover) .sectioned-quote>section{margin-bottom:2.2cqw}.proposal-page:not(.cover) .sectioned-quote>section>header{padding:1.8cqw}.proposal-page:not(.cover) .sectioned-quote>section>header p{font-size:1.1cqw}.proposal-page:not(.cover) .sectioned-quote>section>header strong{font-size:1.5cqw}.proposal-page:not(.cover) .preview-total{gap:5cqw;margin-top:3cqw;font-size:2cqw}
+/* Stable proposal sheet geometry. Blocks size from the paper itself, not its workspace. */
+.proposal-page:not(.cover){padding:0}
+.proposal-page:not(.cover) .proposal-page-brand{width:84%;margin:7% auto 0}
+.proposal-page:not(.cover) .proposal-page-brand b{font-size:20px;letter-spacing:1px}
+.proposal-page:not(.cover) .proposal-page-brand small{font-size:7px;letter-spacing:2px}
+.proposal-page:not(.cover)>h1{width:84%;margin:34px auto 22px;font-size:28px;line-height:1.05}
+.proposal-page:not(.cover) .preview-body,.proposal-page:not(.cover) .rich-content{width:84%;margin-left:auto;margin-right:auto;font-size:10px;line-height:1.45}
+.proposal-page:not(.cover) .rich-content p,.proposal-page:not(.cover) .preview-body p{margin:0 0 10px}
+.proposal-page:not(.cover) .rich-content div{margin:0 0 7px}
+.proposal-page:not(.cover) .rich-content h1,.proposal-page:not(.cover) .rich-content h2,.proposal-page:not(.cover) .rich-content h3{margin:15px 0 5px;line-height:1.15}
+.proposal-page:not(.cover) .rich-content h2{font-size:14px}.proposal-page:not(.cover) .rich-content h3{font-size:12px}
+.proposal-page:not(.cover) .rich-content ol,.proposal-page:not(.cover) .rich-content ul{margin:7px 0 11px;padding-left:24px}
+.proposal-page:not(.cover) .rich-content li{margin:2px 0}
+.proposal-page:not(.cover) footer{left:8%;right:8%;bottom:3%;padding-top:7px;font-size:7px}
+.proposal-page:not(.cover) .preview-quote{width:84%;margin-left:auto;margin-right:auto}.proposal-page:not(.cover) .preview-quote article{grid-template-columns:1fr 80px 90px;gap:10px;padding:10px 8px;font-size:9px}.proposal-page:not(.cover) .preview-quote article p{margin:4px 0;font-size:8px}.proposal-page:not(.cover) .sectioned-quote>section{margin-bottom:13px}.proposal-page:not(.cover) .sectioned-quote>section>header{padding:10px}.proposal-page:not(.cover) .sectioned-quote>section>header p{font-size:8px}.proposal-page:not(.cover) .sectioned-quote>section>header strong{font-size:10px}.proposal-page:not(.cover) .preview-total{width:84%;margin:16px auto 0;gap:30px;font-size:13px}
