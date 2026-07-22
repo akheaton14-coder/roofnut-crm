@@ -84,14 +84,26 @@ function RichTextEditor({
   onSave: (html: string) => void;
 }) {
   const editor = useRef<HTMLDivElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const cleanValue = cleanRichHtml(value);
-    if (editor.current && editor.current.innerHTML !== cleanValue)
+    if (
+      editor.current &&
+      document.activeElement !== editor.current &&
+      editor.current.innerHTML !== cleanValue
+    )
       editor.current.innerHTML = cleanValue;
   }, [value]);
+  function saveCurrent() {
+    if (!editor.current) return;
+    const clean = cleanRichHtml(editor.current.innerHTML);
+    editor.current.innerHTML = clean;
+    onSave(clean);
+  }
   function command(name: string, arg?: string) {
     document.execCommand(name, false, arg);
     editor.current?.focus();
+    requestAnimationFrame(saveCurrent);
   }
   function addLink() {
     const url = prompt("Paste the link address");
@@ -189,7 +201,12 @@ function RichTextEditor({
         suppressContentEditableWarning
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onInput={() => {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          saveTimer.current = setTimeout(saveCurrent, 400);
+        }}
         onBlur={(e) => {
+          if (saveTimer.current) clearTimeout(saveTimer.current);
           const clean = cleanRichHtml(e.currentTarget.innerHTML);
           e.currentTarget.innerHTML = clean;
           onSave(clean);
