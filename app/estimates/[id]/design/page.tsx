@@ -55,7 +55,8 @@ type Product = {
   quantity_formula: string | null;
   quantity_rounding: "ceil" | "round" | "floor" | "none";
 };
-type EstimateSection={id:string;name:string;description:string|null;client_display:"detailed"|"summary"|"hidden";position:number};
+type EstimateScope={id:string;name:string;client_display:"detailed"|"summary"|"hidden";position:number};
+type EstimateSection={id:string;scope_id:string|null;name:string;description:string|null;client_display:"detailed"|"summary"|"hidden";position:number};
 type Photo = {
   id: string;
   filename: string;
@@ -232,7 +233,7 @@ function ProposalPage({
   photos,
   pageNumber,
   sections,
-  quoteSection,
+  quoteScope,
 }: {
   page: Page;
   estimate: Estimate;
@@ -240,7 +241,7 @@ function ProposalPage({
   photos: Photo[];
   pageNumber: number;
   sections: EstimateSection[];
-  quoteSection?: EstimateSection;
+  quoteScope?: EstimateScope;
 }) {
   const selectedIds = (page.content.photo_ids || "").split(",").filter(Boolean),
     selectedPhotos = selectedIds
@@ -269,9 +270,11 @@ function ProposalPage({
         ),
     body = tokens(page.content.body || ""),
     bodyHtml = cleanRichHtml(tokens(page.content.body_html || "")),
-    quoteSections = quoteSection
-      ? [quoteSection]
-      : sections.filter((section) => section.client_display !== "hidden"),
+    quoteSections = sections.filter(
+      (section) =>
+        section.client_display !== "hidden" &&
+        (!quoteScope || section.scope_id === quoteScope.id),
+    ),
     quoteTotal = quoteSections.reduce(
       (total, section) =>
         total +
@@ -320,7 +323,7 @@ function ProposalPage({
         </>
       ) : page.page_type === "quote" ? (
         <>
-          <h1>{quoteSection?.name || page.title}</h1>
+          <h1>{quoteScope?.name || page.title}</h1>
           <div className="preview-quote sectioned-quote">
             {quoteSections.map(section=>{const sectionItems=items.filter(item=>item.section_id===section.id),sectionTotal=sectionItems.reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);return <section key={section.id}><header><div><b>{section.name}</b>{section.description&&<p>{section.description}</p>}</div><strong>${sectionTotal.toLocaleString()}</strong></header>{section.client_display==="detailed"&&sectionItems.map((item,index)=>(
               <article key={index}>
@@ -341,8 +344,8 @@ function ProposalPage({
             ))}</section>})}
           </div>
           <div className="preview-total">
-            <span>{quoteSection ? "Scope total" : "Estimate total"}</span>
-            <b>${Number(quoteSection ? quoteTotal : estimate.total).toLocaleString()}</b>
+            <span>{quoteScope ? "Scope total" : "Estimate total"}</span>
+            <b>${Number(quoteScope ? quoteTotal : estimate.total).toLocaleString()}</b>
           </div>
         </>
       ) : (
@@ -400,6 +403,7 @@ export default function ProposalDesigner() {
     [items, setItems] = useState<Item[]>([]),
     [products, setProducts] = useState<Product[]>([]),
     [measurements, setMeasurements] = useState<FormulaMeasurement[]>([]),
+    [scopes, setScopes] = useState<EstimateScope[]>([]),
     [sections,setSections]=useState<EstimateSection[]>([]),
     [selectedQuoteSection, setSelectedQuoteSection] = useState(""),
     [photos, setPhotos] = useState<Photo[]>([]),
@@ -414,7 +418,7 @@ export default function ProposalDesigner() {
   useEffect(() => {
     if (!organizationId) return;
     (async () => {
-      const [{ data: e }, { data: p, error }, { data: i },{data:s},{data:catalog}] = await Promise.all([
+      const [{ data: e }, { data: p, error }, { data: i },{data:s},{data:catalog},{data:loadedScopes}] = await Promise.all([
         supabase
           .from("estimates")
           .select(
@@ -432,8 +436,9 @@ export default function ProposalDesigner() {
           .select("id,product_id,section_id,name,description,quantity,unit,unit_price,taxable,quantity_source,calculation_formula")
           .eq("estimate_id", id)
           .order("position"),
-        supabase.from("estimate_sections").select("id,name,description,client_display,position").eq("estimate_id",id).order("position"),
+        supabase.from("estimate_sections").select("id,scope_id,name,description,client_display,position").eq("estimate_id",id).order("position"),
         supabase.from("products").select("id,name,description,category,unit,unit_price,taxable,quantity_formula,quantity_rounding").eq("organization_id",organizationId).eq("active",true).order("category").order("name"),
+        supabase.from("estimate_scopes").select("id,name,client_display,position").eq("estimate_id",id).order("position"),
       ]);
       const loaded = e as unknown as Estimate;
       setEstimate(loaded);
@@ -444,12 +449,13 @@ export default function ProposalDesigner() {
       }
       setItems((i || []) as Item[]);
       setProducts((catalog || []) as Product[]);
+      setScopes((loadedScopes || []) as EstimateScope[]);
       const loadedSections = (s || []) as EstimateSection[];
       setSections(loadedSections);
       setSelectedQuoteSection((current) =>
         current && loadedSections.some((section) => section.id === current)
           ? current
-          : loadedSections[0]?.id || "",
+          : ((loadedScopes || [])[0] as EstimateScope | undefined)?.id || "",
       );
       if (loaded?.jobs?.id) {
         const [{data:fields},{data:values}] = await Promise.all([
@@ -481,17 +487,17 @@ export default function ProposalDesigner() {
     generatedPages = enabledPages.flatMap<{
       key: string;
       page: Page;
-      quoteSection?: EstimateSection;
+      quoteScope?: EstimateScope;
     }>((proposalPage) =>
       proposalPage.page_type === "quote"
-        ? sections
-            .filter((section) => section.client_display !== "hidden")
-            .map((section) => ({
-              key: `${proposalPage.id}-${section.id}`,
+        ? scopes
+            .filter((scope) => scope.client_display !== "hidden")
+            .map((scope) => ({
+              key: `${proposalPage.id}-${scope.id}`,
               page: proposalPage,
-              quoteSection: section,
+              quoteScope: scope,
             }))
-        : [{ key: proposalPage.id, page: proposalPage, quoteSection: undefined }],
+        : [{ key: proposalPage.id, page: proposalPage, quoteScope: undefined }],
     );
   async function update(target: Page, patch: Partial<Page>) {
     setPages((current) =>
@@ -507,7 +513,18 @@ export default function ProposalDesigner() {
       await update(page, { content: { ...page.content, [key]: value } });
   }
   async function updateSection(section:EstimateSection,patch:Partial<EstimateSection>){setSections(current=>current.map(item=>item.id===section.id?{...item,...patch}:item));await supabase.from("estimate_sections").update(patch).eq("id",section.id)}
-  async function addSection(){const {data}=await supabase.from("estimate_sections").insert({organization_id:organizationId,estimate_id:id,name:"New Scope",client_display:"detailed",position:sections.length}).select("id,name,description,client_display,position").single();if(data){const section=data as EstimateSection;setSections(current=>[...current,section]);setSelectedQuoteSection(section.id);setOpenSections(current=>new Set(current).add(section.id))}}
+  async function updateScope(scope:EstimateScope,patch:Partial<EstimateScope>){setScopes(current=>current.map(item=>item.id===scope.id?{...item,...patch}:item));await supabase.from("estimate_scopes").update(patch).eq("id",scope.id)}
+  async function addScope(){
+    const {data,error}=await supabase.from("estimate_scopes").insert({organization_id:organizationId,estimate_id:id,name:"New Scope",client_display:"detailed",position:scopes.length}).select("id,name,client_display,position").single();
+    if(error)return alert(error.message);
+    if(data){const scope=data as EstimateScope;setScopes(current=>[...current,scope]);setSelectedQuoteSection(scope.id);await addSection(scope.id,"New Section")}
+  }
+  async function addSection(scopeId:string,name="New Section"){
+    const scopeSections=sections.filter(section=>section.scope_id===scopeId);
+    const {data,error}=await supabase.from("estimate_sections").insert({organization_id:organizationId,estimate_id:id,scope_id:scopeId,name,client_display:"detailed",position:scopeSections.length}).select("id,scope_id,name,description,client_display,position").single();
+    if(error)return alert(error.message);
+    if(data){const section=data as EstimateSection;setSections(current=>[...current,section]);setOpenSections(current=>new Set(current).add(section.id))}
+  }
   async function syncEstimateTotal(nextItems: Item[]) {
     const subtotal = nextItems.reduce(
       (sum, item) => sum + Number(item.quantity) * Number(item.unit_price),
@@ -917,28 +934,30 @@ export default function ProposalDesigner() {
                       <p>Build each scope separately. Every client-visible tab becomes its own pricing page.</p>
                     </div>
                     <div className="scope-tabs">
-                      {sections.map((section) => (
+                      {scopes.map((scope) => (
                         <button
-                          className={selectedQuoteSection === section.id ? "active" : ""}
-                          key={section.id}
-                          onClick={() => {
-                            setSelectedQuoteSection(section.id);
-                            setOpenSections((current) => new Set(current).add(section.id));
-                          }}
+                          className={selectedQuoteSection === scope.id ? "active" : ""}
+                          key={scope.id}
+                          onClick={() => setSelectedQuoteSection(scope.id)}
                         >
-                          <span>{section.name}</span>
-                          <small>{items.filter((item) => item.section_id === section.id).length}</small>
+                          <span>{scope.name}</span>
+                          <small>{sections.filter((section) => section.scope_id === scope.id).reduce((total, section) => total + items.filter((item) => item.section_id === section.id).length, 0)}</small>
                         </button>
                       ))}
-                      <button className="add-scope-tab" title="Add another scope" onClick={addSection}>＋</button>
+                      <button className="add-scope-tab" title="Add another scope" onClick={addScope}>＋</button>
                     </div>
-                    {sections.filter((section) => section.id === (selectedQuoteSection || sections[0]?.id)).map((section) => {
+                    {scopes.filter((scope) => scope.id === (selectedQuoteSection || scopes[0]?.id)).map((scope) => <div className="active-scope" key={scope.id}>
+                      <div className="scope-settings">
+                        <label>Tab name<input value={scope.name} onChange={(event)=>setScopes(current=>current.map(item=>item.id===scope.id?{...item,name:event.target.value}:item))} onBlur={(event)=>updateScope(scope,{name:event.target.value})}/></label>
+                        <label>Client page<select value={scope.client_display} onChange={(event)=>updateScope(scope,{client_display:event.target.value as EstimateScope["client_display"]})}><option value="detailed">Include this scope</option><option value="summary">Include scope total only</option><option value="hidden">Internal only</option></select></label>
+                      </div>
+                      {sections.filter((section) => section.scope_id === scope.id).map((section) => {
                       const sectionItems = items.filter((item) => item.section_id === section.id),
                         count = sectionItems.length,
-                        isOpen = true;
+                        isOpen = openSections.has(section.id);
                       return (
                         <article
-                          className={`scope-tab-panel open ${draggedItemId ? "drag-target" : ""}`}
+                          className={`${isOpen ? "open" : ""} ${draggedItemId ? "drag-target" : ""}`}
                           key={section.id}
                           onDragOver={(event) => event.preventDefault()}
                           onDrop={() => {
@@ -946,9 +965,9 @@ export default function ProposalDesigner() {
                             setDraggedItemId(null);
                           }}
                         >
-                          <button className="section-collapse" aria-hidden="true">›</button>
+                          <button className="section-collapse" onClick={() => setOpenSections((current) => {const next=new Set(current);if(next.has(section.id))next.delete(section.id);else next.add(section.id);return next})}>›</button>
                           <div><input value={section.name} onChange={(e) => setSections((current) => current.map((item) => item.id === section.id ? { ...item, name: e.target.value } : item))} onBlur={(e) => updateSection(section, { name: e.target.value })}/><small>{count} line item{count === 1 ? "" : "s"}</small></div>
-                          <select value={section.client_display} onChange={(e) => updateSection(section, { client_display: e.target.value as EstimateSection["client_display"] })}><option value="detailed">Client page: Detailed pricing</option><option value="summary">Client page: Scope total only</option><option value="hidden">Internal: Don’t generate page</option></select>
+                          <select value={section.client_display} onChange={(e) => updateSection(section, { client_display: e.target.value as EstimateSection["client_display"] })}><option value="detailed">Show section details</option><option value="summary">Show section total only</option><option value="hidden">Hide section from client</option></select>
                           {isOpen && <div className="section-item-list pricing-item-list">
                             {sectionItems.map((item) => <div key={item.id} draggable onDragStart={() => setDraggedItemId(item.id)} onDragEnd={() => setDraggedItemId(null)}>
                               <span className="pricing-drag-handle">⠿</span>
@@ -971,6 +990,8 @@ export default function ProposalDesigner() {
                         </article>
                       );
                     })}
+                    <button className="add-estimate-section" onClick={()=>addSection(scope.id)}>＋ Add section inside {scope.name}</button>
+                    </div>)}
                     <div className="designer-estimate-total"><span>Estimate total</span><b>${Number(estimate.total).toLocaleString()}</b></div>
                   </div>
                 )}
@@ -1028,11 +1049,11 @@ export default function ProposalDesigner() {
                   1,
                   generatedPages.findIndex((entry) =>
                     entry.page.id === page.id &&
-                    (page.page_type !== "quote" || entry.quoteSection?.id === selectedQuoteSection)
+                    (page.page_type !== "quote" || entry.quoteScope?.id === selectedQuoteSection)
                   ) + 1,
                 )}
                 sections={sections}
-                quoteSection={page.page_type === "quote" ? sections.find((section) => section.id === (selectedQuoteSection || sections[0]?.id)) : undefined}
+                quoteScope={page.page_type === "quote" ? scopes.find((scope) => scope.id === (selectedQuoteSection || scopes[0]?.id)) : undefined}
               />
             </div>
           )}
@@ -1046,7 +1067,7 @@ export default function ProposalDesigner() {
                 photos={photos}
                 pageNumber={index + 1}
                 sections={sections}
-                quoteSection={generatedPage.quoteSection}
+                quoteScope={generatedPage.quoteScope}
               />
             ))}
           </div>
