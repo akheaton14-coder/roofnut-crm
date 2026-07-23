@@ -67,26 +67,31 @@ export async function POST() {
     const latestJobByClient = new Map<string, string>();
     for (const job of jobs || []) if (!latestJobByClient.has(job.client_id)) latestJobByClient.set(job.client_id, job.id);
 
-    let matched = 0;
-    let unmatched = 0;
+    const fetchedMessages: GmailMessage[] = [];
+    for (let index = 0; index < newIds.length; index += 20) {
+      const batch = newIds.slice(index, index + 20);
+      const details = await Promise.all(batch.map(async (messageId) => {
+        const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        return response.ok ? await response.json() as GmailMessage : null;
+      }));
+      fetchedMessages.push(...details.filter((message): message is GmailMessage => Boolean(message)));
+    }
+
     let skippedOwn = 0;
-    for (const messageId of newIds) {
-      const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      });
-      if (!response.ok) continue;
-      const message = await response.json() as GmailMessage;
+    const incoming = fetchedMessages.flatMap((message) => {
       const sender = parseSender(header(message, "From"));
       if (sender.email === connection.email_address.toLowerCase()) {
         skippedOwn++;
-        continue;
+        return [];
       }
       const clientId = clientByEmail.get(sender.email) || null;
       const jobId = clientId ? latestJobByClient.get(clientId) || null : null;
       const subject = header(message, "Subject") || "(No subject)";
       const receivedAt = message.internalDate ? new Date(Number(message.internalDate)).toISOString() : new Date().toISOString();
-      const { error } = await admin.from("gmail_messages").insert({
+      return [{
         organization_id: membership.organization_id,
         connection_id: connection.id,
         client_id: clientId,
@@ -98,24 +103,26 @@ export async function POST() {
         subject,
         snippet: message.snippet || "",
         received_at: receivedAt,
-      });
-      if (error) continue;
-      if (jobId) {
-        matched++;
-        await admin.from("activities").insert({
-          organization_id: membership.organization_id,
-          job_id: jobId,
-          actor_id: null,
-          kind: "email received",
-          body: `From: ${sender.name ? `${sender.name} <${sender.email}>` : sender.email}\nSubject: ${subject}\n\n${message.snippet || ""}`,
-          occurred_at: receivedAt,
-        });
-      } else {
-        unmatched++;
-      }
+      }];
+    });
+
+    const matched = incoming.filter((message) => message.job_id).length;
+    const unmatched = incoming.length - matched;
+    if (incoming.length) {
+      const { error } = await admin.from("gmail_messages").insert(incoming);
+      if (error) throw new Error(`Inbox messages could not be saved: ${error.message}`);
+      const activities = incoming.filter((message) => message.job_id).map((message) => ({
+        organization_id: membership.organization_id,
+        job_id: message.job_id!,
+        actor_id: null,
+        kind: "email received",
+        body: `From: ${message.sender_name ? `${message.sender_name} <${message.sender_email}>` : message.sender_email}\nSubject: ${message.subject}\n\n${message.snippet}`,
+        occurred_at: message.received_at,
+      }));
+      if (activities.length) await admin.from("activities").insert(activities);
     }
 
-    return NextResponse.json({ ok: true, imported: matched + unmatched, matched, unmatched, skippedOwn, scanned: newIds.length });
+    return NextResponse.json({ ok: true, imported: incoming.length, matched, unmatched, skippedOwn, scanned: newIds.length });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Inbox sync failed." }, { status: 500 });
   }
