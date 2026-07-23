@@ -34,8 +34,12 @@ export default function IntegrationsPage() {
       .order("connected_at", { ascending: false })
       .then(({ data }) => setConnections((data || []) as GmailConnection[]));
     loadMessages();
+    const autoSync=()=>{if(document.visibilityState==="visible"&&connections.length)syncInbox()};
+    const timer=window.setInterval(autoSync,60000);
+    window.addEventListener("focus",autoSync);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizationId, supabase]);
+    return()=>{window.clearInterval(timer);window.removeEventListener("focus",autoSync)};
+  }, [organizationId, supabase, connections.length]);
   async function syncInbox(){setSyncing(true);setSyncMessage("");try{const response=await fetch("/api/gmail/sync",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Inbox sync failed.");setSyncMessage(`${result.imported} new email${result.imported===1?"":"s"} · ${result.matched} attached to jobs${result.unmatched?` · ${result.unmatched} unmatched`:""} · ${result.scanned} checked`);loadMessages()}catch(error){setSyncMessage(error instanceof Error?error.message:"Inbox sync failed.")}finally{setSyncing(false)}}
 
   if (loading) return <main className="auth-loading"><span>R</span></main>;
@@ -68,7 +72,7 @@ export default function IntegrationsPage() {
               <div className="connected-account" key={connection.id}>
                 <div>
                   <b>{connection.email_address}</b>
-                  <span>Connected {new Date(connection.connected_at).toLocaleDateString()}</span>
+                  <span>Connected {new Date(connection.connected_at).toLocaleDateString()} · Inbox checks automatically while Roofnut CRM is open</span>
                 </div>
                 <div className="connected-actions"><button className="sync-button" disabled={syncing} onClick={syncInbox}>{syncing?"Syncing…":"↻ Sync inbox"}</button><form action="/api/gmail/disconnect" method="post"><button type="submit">Disconnect</button></form></div>
               </div>
