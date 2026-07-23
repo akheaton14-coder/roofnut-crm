@@ -10,11 +10,21 @@ type GmailConnection = {
   status: string;
   connected_at: string;
 };
+type GmailMessage = { id:string;sender_email:string;sender_name:string|null;subject:string;snippet:string;received_at:string;job_id:string|null };
 
 export default function IntegrationsPage() {
   const { supabase, organizationId, loading, userName } = useWorkspace();
   const [connections, setConnections] = useState<GmailConnection[]>([]);
+  const [messages,setMessages]=useState<GmailMessage[]>([]);
+  const [syncing,setSyncing]=useState(false);
+  const [syncMessage,setSyncMessage]=useState("");
 
+  function loadMessages() {
+    if (!organizationId) return;
+    supabase.from("gmail_messages").select("id,sender_email,sender_name,subject,snippet,received_at,job_id")
+      .eq("organization_id",organizationId).order("received_at",{ascending:false}).limit(20)
+      .then(({data})=>setMessages((data||[]) as GmailMessage[]));
+  }
   useEffect(() => {
     if (!organizationId) return;
     supabase
@@ -23,7 +33,10 @@ export default function IntegrationsPage() {
       .eq("organization_id", organizationId)
       .order("connected_at", { ascending: false })
       .then(({ data }) => setConnections((data || []) as GmailConnection[]));
+    loadMessages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId, supabase]);
+  async function syncInbox(){setSyncing(true);setSyncMessage("");try{const response=await fetch("/api/gmail/sync",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Inbox sync failed.");setSyncMessage(`${result.imported} new email${result.imported===1?"":"s"} · ${result.matched} attached to jobs${result.unmatched?` · ${result.unmatched} unmatched`:""}`);loadMessages()}catch(error){setSyncMessage(error instanceof Error?error.message:"Inbox sync failed.")}finally{setSyncing(false)}}
 
   if (loading) return <main className="auth-loading"><span>R</span></main>;
 
@@ -57,11 +70,10 @@ export default function IntegrationsPage() {
                   <b>{connection.email_address}</b>
                   <span>Connected {new Date(connection.connected_at).toLocaleDateString()}</span>
                 </div>
-                <form action="/api/gmail/disconnect" method="post">
-                  <button type="submit">Disconnect</button>
-                </form>
+                <div className="connected-actions"><button className="sync-button" disabled={syncing} onClick={syncInbox}>{syncing?"Syncing…":"↻ Sync inbox"}</button><form action="/api/gmail/disconnect" method="post"><button type="submit">Disconnect</button></form></div>
               </div>
             ))}
+            {syncMessage&&<div className="sync-result">{syncMessage}</div>}
 
             {!connections.length && (
               <div className="integration-actions">
@@ -71,6 +83,7 @@ export default function IntegrationsPage() {
             )}
           </div>
         </section>
+        {!!connections.length&&<section className="panel gmail-inbox"><div className="panel-head"><div><h3>Recent Gmail</h3><p>Client emails attach to their latest job. Unmatched messages stay here for review.</p></div></div>{messages.map(message=><article key={message.id} className={message.job_id?"matched":""}><div className="gmail-message-icon">{message.job_id?"✓":"✉"}</div><div><b>{message.sender_name||message.sender_email}</b><span>{message.sender_email}</span><h4>{message.subject}</h4><p>{message.snippet}</p></div><div className="gmail-message-meta"><span>{new Date(message.received_at).toLocaleString()}</span><b>{message.job_id?"Attached to job":"Unmatched"}</b></div></article>)}{!messages.length&&<div className="empty">Click “Sync inbox” to bring in the last 30 days of Gmail.</div>}</section>}
       </div>
     </CrmShell>
   );
