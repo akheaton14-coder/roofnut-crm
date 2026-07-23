@@ -41,10 +41,9 @@ export async function POST() {
 
     const { accessToken } = await getGmailAccessToken(user.id, membership.organization_id);
     const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    // Gmail search is thread-aware, so `-from:me` can hide an entire thread
-    // that contains both our sent message and the client's reply. Fetch recent
-    // individual messages and filter our own sender after reading the headers.
-    listUrl.searchParams.set("q", "newer_than:30d in:anywhere");
+    // Gmail search is thread-aware and can hide replies in mixed sent/received
+    // conversations. Read the newest individual messages without a search
+    // expression, then filter our own sender after reading each header.
     listUrl.searchParams.set("maxResults", "100");
     const listResponse = await fetch(listUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },

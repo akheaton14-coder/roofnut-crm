@@ -36,7 +36,7 @@ export default function IntegrationsPage() {
     loadMessages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId, supabase]);
-  async function syncInbox(){setSyncing(true);setSyncMessage("");try{const response=await fetch("/api/gmail/sync",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Inbox sync failed.");setSyncMessage(`${result.imported} new email${result.imported===1?"":"s"} · ${result.matched} attached to jobs${result.unmatched?` · ${result.unmatched} unmatched`:""}`);loadMessages()}catch(error){setSyncMessage(error instanceof Error?error.message:"Inbox sync failed.")}finally{setSyncing(false)}}
+  async function syncInbox(){setSyncing(true);setSyncMessage("");try{const response=await fetch("/api/gmail/sync",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Inbox sync failed.");setSyncMessage(`${result.imported} new email${result.imported===1?"":"s"} · ${result.matched} attached to jobs${result.unmatched?` · ${result.unmatched} unmatched`:""} · ${result.scanned} checked`);loadMessages()}catch(error){setSyncMessage(error instanceof Error?error.message:"Inbox sync failed.")}finally{setSyncing(false)}}
 
   if (loading) return <main className="auth-loading"><span>R</span></main>;
 
