@@ -41,8 +41,11 @@ export async function POST() {
 
     const { accessToken } = await getGmailAccessToken(user.id, membership.organization_id);
     const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    listUrl.searchParams.set("q", "newer_than:30d -from:me");
-    listUrl.searchParams.set("maxResults", "50");
+    // Gmail search is thread-aware, so `-from:me` can hide an entire thread
+    // that contains both our sent message and the client's reply. Fetch recent
+    // individual messages and filter our own sender after reading the headers.
+    listUrl.searchParams.set("q", "newer_than:30d in:anywhere");
+    listUrl.searchParams.set("maxResults", "100");
     const listResponse = await fetch(listUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
@@ -67,6 +70,7 @@ export async function POST() {
 
     let matched = 0;
     let unmatched = 0;
+    let skippedOwn = 0;
     for (const messageId of newIds) {
       const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -75,6 +79,10 @@ export async function POST() {
       if (!response.ok) continue;
       const message = await response.json() as GmailMessage;
       const sender = parseSender(header(message, "From"));
+      if (sender.email === connection.email_address.toLowerCase()) {
+        skippedOwn++;
+        continue;
+      }
       const clientId = clientByEmail.get(sender.email) || null;
       const jobId = clientId ? latestJobByClient.get(clientId) || null : null;
       const subject = header(message, "Subject") || "(No subject)";
@@ -108,7 +116,7 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ ok: true, imported: matched + unmatched, matched, unmatched });
+    return NextResponse.json({ ok: true, imported: matched + unmatched, matched, unmatched, skippedOwn, scanned: newIds.length });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Inbox sync failed." }, { status: 500 });
   }
