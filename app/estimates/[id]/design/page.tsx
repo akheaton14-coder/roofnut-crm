@@ -64,12 +64,17 @@ type Product = {
 };
 type EstimateScope={id:string;name:string;description:string|null;client_display:"detailed"|"summary"|"hidden";position:number};
 type EstimateSection={id:string;scope_id:string|null;name:string;description:string|null;client_display:"detailed"|"summary"|"hidden";position:number};
+type SigningItem={id:string;product_id:string|null;name:string;description:string;quantity:number;unit:string;unit_price:number};
 type Photo = {
   id: string;
   filename: string;
   storage_path: string;
   signedUrl?: string;
 };
+
+function signingItems(page:Page|undefined,key:"upgrades"|"credits"){
+  try{return JSON.parse(page?.content[key]||"[]") as SigningItem[]}catch{return []}
+}
 
 function cleanRichHtml(html: string) {
   return (html || "")
@@ -240,6 +245,7 @@ function ProposalPage({
   photos,
   pageNumber,
   sections,
+  scopes,
   quoteScope,
 }: {
   page: Page;
@@ -248,6 +254,7 @@ function ProposalPage({
   photos: Photo[];
   pageNumber: number;
   sections: EstimateSection[];
+  scopes: EstimateScope[];
   quoteScope?: EstimateScope;
 }) {
   const selectedIds = (page.content.photo_ids || "").split(",").filter(Boolean),
@@ -356,6 +363,34 @@ function ProposalPage({
             <b>${Number(quoteScope ? quoteTotal : estimate.total).toLocaleString()}</b>
           </div>
         </>
+      ) : page.page_type === "upgrades" ? (
+        <>
+          <h1>{page.title}</h1>
+          <div className="signing-summary">
+            <div className="signing-scope-list">
+              {scopes.filter(scope=>scope.client_display!=="hidden").map(scope=>{
+                const scopeSectionIds=new Set(sections.filter(section=>section.scope_id===scope.id).map(section=>section.id));
+                const scopeTotal=items.filter(item=>item.section_id&&scopeSectionIds.has(item.section_id)).reduce((sum,item)=>sum+Number(item.quantity)*Number(item.unit_price),0);
+                return <div key={scope.id}><span>{scope.name}</span><b>${scopeTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</b></div>
+              })}
+              <div className="signing-grand-total"><span>Total proposed investment</span><b>${Number(estimate.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</b></div>
+            </div>
+            {(["upgrades","credits"] as const).map(kind=>{
+              const rows=signingItems(page,kind);
+              if(!rows.length)return null;
+              return <section className={`signing-options ${kind}`} key={kind}>
+                <h2>{kind==="upgrades"?"Optional upgrades":"Available credits"}</h2>
+                <header><span>Description</span><span>Qty</span><span>Unit price</span><span>{kind==="credits"?"Credit":"Line total"}</span></header>
+                {rows.map(row=><article key={row.id}>
+                  <div><i></i><span><b>{row.name}</b>{row.description&&<small>{row.description}</small>}</span></div>
+                  <span>{row.quantity}</span>
+                  <span>${Number(row.unit_price).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                  <b>{kind==="credits"?"−":""}${(Number(row.quantity)*Number(row.unit_price)).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</b>
+                </article>)}
+              </section>
+            })}
+          </div>
+        </>
       ) : (
         <>
           <h1>{page.title}</h1>
@@ -419,6 +454,8 @@ export default function ProposalDesigner() {
     [openSections,setOpenSections]=useState<Set<string>>(new Set()),
     [addingToSection, setAddingToSection] = useState<string | null>(null),
     [itemSearch, setItemSearch] = useState(""),
+    [addingSigningKind,setAddingSigningKind]=useState<"upgrades"|"credits"|null>(null),
+    [signingSearch,setSigningSearch]=useState(""),
     [draggedItemId, setDraggedItemId] = useState<string | null>(null),
     [showPhotoPicker, setShowPhotoPicker] = useState(false),
     [marginDraft, setMarginDraft] = useState(45),
@@ -525,6 +562,34 @@ export default function ProposalDesigner() {
   async function content(key: string, value: string) {
     if (page)
       await update(page, { content: { ...page.content, [key]: value } });
+  }
+  async function saveSigningItems(kind:"upgrades"|"credits",rows:SigningItem[]){
+    await content(kind,JSON.stringify(rows));
+  }
+  function addSigningProduct(kind:"upgrades"|"credits",product:Product){
+    const rows=signingItems(page,kind);
+    saveSigningItems(kind,[...rows,{
+      id:crypto.randomUUID(),product_id:product.id,name:product.name,
+      description:product.description||"",quantity:1,unit:product.unit,
+      unit_price:Number(product.unit_price),
+    }]);
+    setAddingSigningKind(null);
+    setSigningSearch("");
+  }
+  function addCustomSigningItem(kind:"upgrades"|"credits"){
+    const rows=signingItems(page,kind);
+    saveSigningItems(kind,[...rows,{
+      id:crypto.randomUUID(),product_id:null,name:signingSearch||"Custom item",
+      description:"",quantity:1,unit:"EA",unit_price:0,
+    }]);
+    setAddingSigningKind(null);
+    setSigningSearch("");
+  }
+  function patchSigningItem(kind:"upgrades"|"credits",itemId:string,patch:Partial<SigningItem>){
+    saveSigningItems(kind,signingItems(page,kind).map(row=>row.id===itemId?{...row,...patch}:row));
+  }
+  function removeSigningItem(kind:"upgrades"|"credits",itemId:string){
+    saveSigningItems(kind,signingItems(page,kind).filter(row=>row.id!==itemId));
   }
   async function updateSection(section:EstimateSection,patch:Partial<EstimateSection>){setSections(current=>current.map(item=>item.id===section.id?{...item,...patch}:item));await supabase.from("estimate_sections").update(patch).eq("id",section.id)}
   async function updateScope(scope:EstimateScope,patch:Partial<EstimateScope>){setScopes(current=>current.map(item=>item.id===scope.id?{...item,...patch}:item));await supabase.from("estimate_scopes").update(patch).eq("id",scope.id)}
@@ -936,7 +1001,8 @@ export default function ProposalDesigner() {
                   </>
                 )}
                 {page.page_type !== "quote" &&
-                  page.page_type !== "inspection" && (
+                  page.page_type !== "inspection" &&
+                  page.page_type !== "upgrades" && (
                   <label>
                     Page content
                     <RichTextEditor
@@ -987,6 +1053,39 @@ export default function ProposalDesigner() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+                {page.page_type === "upgrades" && (
+                  <div className="signing-upgrades-editor">
+                    <div className="signing-editor-intro">
+                      <b>Signing summary & choices</b>
+                      <p>The customer will see every visible scope, the total proposal price, and any optional choices you add below.</p>
+                    </div>
+                    {(["upgrades","credits"] as const).map(kind=>{
+                      const rows=signingItems(page,kind);
+                      return <section className={`signing-editor-group ${kind}`} key={kind}>
+                        <header>
+                          <div><b>{kind==="upgrades"?"Optional upgrades":"Credits & discounts"}</b><p>{kind==="upgrades"?"Add enhancements the customer may choose.":"Add rebates, allowances, or discounts the customer may receive."}</p></div>
+                          <span>{rows.length} item{rows.length===1?"":"s"}</span>
+                        </header>
+                        {rows.map(row=><article key={row.id}>
+                          <div className="signing-item-copy"><small>Product / service</small><input value={row.name} onChange={event=>patchSigningItem(kind,row.id,{name:event.target.value})}/><textarea value={row.description} placeholder="Customer-facing description…" onChange={event=>patchSigningItem(kind,row.id,{description:event.target.value})}/></div>
+                          <label>Qty<input type="number" min="0" value={row.quantity} onChange={event=>patchSigningItem(kind,row.id,{quantity:Number(event.target.value)})}/></label>
+                          <label>Unit<input value={row.unit} onChange={event=>patchSigningItem(kind,row.id,{unit:event.target.value})}/></label>
+                          <label>{kind==="credits"?"Credit":"Price"}<input type="number" min="0" step=".01" value={row.unit_price} onChange={event=>patchSigningItem(kind,row.id,{unit_price:Number(event.target.value)})}/></label>
+                          <b>{kind==="credits"?"−":""}${(Number(row.quantity)*Number(row.unit_price)).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</b>
+                          <button onClick={()=>removeSigningItem(kind,row.id)}>×</button>
+                        </article>)}
+                        {addingSigningKind===kind?(
+                          <div className="signing-product-search">
+                            <input autoFocus value={signingSearch} onChange={event=>setSigningSearch(event.target.value)} placeholder={`Search saved ${kind==="upgrades"?"upgrades":"credits"}…`}/>
+                            <button onClick={()=>{setAddingSigningKind(null);setSigningSearch("")}}>×</button>
+                            {!!signingSearch&&<div>{products.filter(product=>`${product.name} ${product.description||""} ${product.category}`.toLowerCase().includes(signingSearch.toLowerCase())).slice(0,8).map(product=><button key={product.id} onClick={()=>addSigningProduct(kind,product)}><span><b>{product.name}</b><small>{product.description||product.category}</small></span><em>${Number(product.unit_price).toLocaleString()} / {product.unit}</em></button>)}<button className="custom-search-item" onClick={()=>addCustomSigningItem(kind)}>＋ Add “{signingSearch}” as a custom item</button></div>}
+                          </div>
+                        ):<button className="signing-add-item" onClick={()=>{setAddingSigningKind(kind);setSigningSearch("")}}>＋ Add {kind==="upgrades"?"upgrade":"credit"}</button>}
+                      </section>
+                    })}
+                    <div className="signing-empty-note">Empty sections automatically stay off the customer preview and PDF.</div>
                   </div>
                 )}
                 {page.page_type === "quote" && (
@@ -1131,6 +1230,7 @@ export default function ProposalDesigner() {
                   ) + 1,
                 )}
                 sections={sections}
+                scopes={scopes}
                 quoteScope={page.page_type === "quote" ? scopes.find((scope) => scope.id === (selectedQuoteSection || scopes[0]?.id)) : undefined}
               />
             </div>
@@ -1145,6 +1245,7 @@ export default function ProposalDesigner() {
                 photos={photos}
                 pageNumber={index + 1}
                 sections={sections}
+                scopes={scopes}
                 quoteScope={generatedPage.quoteScope}
               />
             ))}
