@@ -249,6 +249,15 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .integration-card{display:flex;gap:24px;padding:30px;align-items:flex-start}
 .integration-logo{width:58px;height:58px;border-radius:16px;display:grid;place-items:center;font-size:28px;font-weight:900;flex:0 0 auto}
 .gmail-logo{color:#fff;background:linear-gradient(135deg,#ea4335 0 48%,#fbbc04 48% 62%,#34a853 62% 78%,#4285f4 78%)}
+.job-email-button{background:#e4fbfa!important;color:#007f86!important;border:1px solid #46ced0!important}
+.email-compose-modal{width:min(680px,calc(100vw - 32px))}
+.email-compose-fields{display:grid;gap:14px;margin:24px 0}
+.email-compose-fields label{display:grid;gap:7px;color:#596b6e;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px}
+.email-compose-fields input,.email-compose-fields textarea{width:100%;border:1px solid #cfdadb;border-radius:9px;padding:12px 14px;background:#fff;color:#102f35;font:500 14px Arial;outline:0;text-transform:none;letter-spacing:0}
+.email-compose-fields input:focus,.email-compose-fields textarea:focus{border-color:#00bfc5;box-shadow:0 0 0 3px #00bfc51c}
+.email-compose-fields textarea{min-height:220px;resize:vertical;line-height:1.55}
+.email-error{border:1px solid #f1b4b0;background:#fff0ef;color:#a7352e;border-radius:8px;padding:11px 13px;font-size:12px;margin-bottom:14px}
+.timeline article div{white-space:pre-wrap}
 .integration-copy{flex:1}
 .integration-title{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
 .integration-title h2{font-size:25px;margin:1px 0 6px}
