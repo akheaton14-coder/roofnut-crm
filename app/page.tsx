@@ -13,6 +13,7 @@ type Job = {
   value: number;
   owner: string;
   next: string;
+  unread: number;
   tone: "gold" | "blue" | "green" | "red";
 };
 
@@ -37,6 +38,7 @@ export default function Home() {
   const [organizationId, setOrganizationId] = useState("");
   const [liveJobs, setLiveJobs] = useState<Job[]>([]);
   const [jobsLoaded, setJobsLoaded] = useState(false);
+  const [unreadEmailCount,setUnreadEmailCount]=useState(0);
   const [importName, setImportName] = useState("");
   const [importRows, setImportRows] = useState<string[][]>([]);
   const [allImportRows, setAllImportRows] = useState<string[][]>([]);
@@ -65,13 +67,34 @@ export default function Home() {
       const { data: membership } = await supabase.from("organization_members").select("organization_id").eq("user_id", user!.id).maybeSingle();
       if (!membership?.organization_id) { setJobsLoaded(true); return; }
       setOrganizationId(membership.organization_id);
-      const { data } = await supabase.from("jobs").select("id,title,stage,contract_value,next_action,workflow_stages(name,key),clients(first_name,last_name),properties(address_1,city),profiles!jobs_owner_id_fkey(full_name)").eq("organization_id", membership.organization_id).order("updated_at", { ascending: false }).limit(20);
+      const [{data},{data:unreadMessages}]=await Promise.all([
+        supabase.from("jobs").select("id,title,stage,contract_value,next_action,workflow_stages(name,key),clients(first_name,last_name),properties(address_1,city),profiles!jobs_owner_id_fkey(full_name)").eq("organization_id", membership.organization_id).order("updated_at", { ascending: false }).limit(20),
+        supabase.from("gmail_messages").select("job_id").eq("organization_id",membership.organization_id).is("read_at",null).not("job_id","is",null)
+      ]);
+      const unreadByJob=new Map<string,number>();for(const message of unreadMessages||[])unreadByJob.set(message.job_id,(unreadByJob.get(message.job_id)||0)+1);
+      setUnreadEmailCount((unreadMessages||[]).length);
       const rows = (data || []) as unknown as Array<{id:string;title:string;stage:string;contract_value:number;next_action:string|null;workflow_stages:{name:string;key:string}|null;clients:{first_name:string;last_name:string}|null;properties:{address_1:string;city:string}|null;profiles:{full_name:string}|null}>;
-      setLiveJobs(rows.map((row) => {const key=row.workflow_stages?.key||row.stage;return ({ id: row.id, name: row.title, address: row.properties ? `${row.properties.address_1} · ${row.properties.city}` : `${row.clients?.first_name || ""} ${row.clients?.last_name || ""}`.trim(), stage: row.workflow_stages?.name||row.stage.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()), value: Number(row.contract_value), owner: row.profiles?.full_name || "Unassigned", next: row.next_action || "Add next action", tone: key === "sold" ? "gold" : key.includes("production") || key === "scheduled" ? "green" : key.includes("estimate") ? "red" : "blue" })}));
+      setLiveJobs(rows.map((row) => {const key=row.workflow_stages?.key||row.stage;return ({ id: row.id, name: row.title, address: row.properties ? `${row.properties.address_1} · ${row.properties.city}` : `${row.clients?.first_name || ""} ${row.clients?.last_name || ""}`.trim(), stage: row.workflow_stages?.name||row.stage.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()), value: Number(row.contract_value), owner: row.profiles?.full_name || "Unassigned", next: row.next_action || "Add next action", unread:unreadByJob.get(row.id)||0, tone: key === "sold" ? "gold" : key.includes("production") || key === "scheduled" ? "green" : key.includes("estimate") ? "red" : "blue" })}));
       setJobsLoaded(true);
     }
     loadWorkspace();
   }, [supabase, user]);
+
+  useEffect(()=>{
+    if(!organizationId||!user)return;
+    let active=true;
+    const sync=async()=>{
+      if(document.visibilityState==="hidden")return;
+      await fetch("/api/gmail/sync",{method:"POST"});
+      const {data}=await supabase.from("gmail_messages").select("job_id").eq("organization_id",organizationId).is("read_at",null).not("job_id","is",null);
+      if(!active)return;
+      const counts=new Map<string,number>();for(const message of data||[])counts.set(message.job_id,(counts.get(message.job_id)||0)+1);
+      setUnreadEmailCount((data||[]).length);
+      setLiveJobs(current=>current.map(job=>({...job,unread:job.id?counts.get(job.id)||0:0})));
+    };
+    sync();const timer=window.setInterval(sync,60000);window.addEventListener("focus",sync);
+    return()=>{active=false;window.clearInterval(timer);window.removeEventListener("focus",sync)};
+  },[organizationId,supabase,user]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -134,7 +157,7 @@ export default function Home() {
     const { data: created, error } = await supabase.from("jobs").insert({ organization_id: organizationId, client_id: client.id, property_id: propertyId, title: newJob.title, stage: newJob.stage, workflow_id:workflow?.id||null,workflow_stage_id:workflowStage?.id||null,contract_value: Number(newJob.value) || 0, owner_id: user.id, next_action: newJob.nextAction || null }).select("id,title,stage,contract_value,next_action").single();
     setSaving(false);
     if (error) { setErrorMessage(error.message); return; }
-    setLiveJobs((current) => [{ id: created.id, name: created.title, address: newJob.address ? `${newJob.address} · ${newJob.city}` : `${newJob.firstName} ${newJob.lastName}`, stage: created.stage.replaceAll("_", " ").replace(/\b\w/g, (c:string) => c.toUpperCase()), value: Number(created.contract_value), owner: user.user_metadata?.full_name || "You", next: created.next_action || "Add next action", tone: created.stage === "sold" ? "gold" : "blue" }, ...current]);
+    setLiveJobs((current) => [{ id: created.id, name: created.title, address: newJob.address ? `${newJob.address} · ${newJob.city}` : `${newJob.firstName} ${newJob.lastName}`, stage: created.stage.replaceAll("_", " ").replace(/\b\w/g, (c:string) => c.toUpperCase()), value: Number(created.contract_value), owner: user.user_metadata?.full_name || "You", next: created.next_action || "Add next action", unread:0, tone: created.stage === "sold" ? "gold" : "blue" }, ...current]);
     setShowNewJob(false);
     setNewJob({ firstName: "", lastName: "", email: "", phone: "", address: "", city: "", state: "NC", postalCode: "", title: "", stage: "new_lead", value: "", nextAction: "" });
   }
@@ -168,7 +191,7 @@ export default function Home() {
       <section className="workspace">
         <header>
           <div className="search"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients, jobs, addresses..."/><kbd>⌘ K</kbd></div>
-          <button className="icon-button" aria-label="Notifications">♢<i /></button>
+          <button className={`icon-button email-notification ${unreadEmailCount?"has-unread":""}`} aria-label={`${unreadEmailCount} unread client emails`}>✉{unreadEmailCount>0&&<b>{unreadEmailCount>99?"99+":unreadEmailCount}</b>}</button>
           <button className="import-button" onClick={() => setShowImport(true)}>↑ Import clients</button>
           <button className="primary-button" onClick={() => setShowNewJob(true)}>＋ New job</button>
         </header>
@@ -192,7 +215,7 @@ export default function Home() {
               <div className="job-list">
                 {filteredJobs.map((job) => <article className="job-row clickable-job" key={job.name} role="link" tabIndex={0} onClick={() => job.id && router.push(`/jobs/${job.id}`)} onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && job.id) router.push(`/jobs/${job.id}`) }}>
                   <span className={`job-badge ${job.tone}`}>{job.name.split(" ").slice(0,2).map(w=>w[0]).join("")}</span>
-                  <div className="job-main"><h4>{job.name}</h4><p>{job.address}</p></div>
+                  <div className="job-main"><h4>{job.name}{job.unread>0&&<em className="job-email-unread">✉ {job.unread} new</em>}</h4><p>{job.address}</p></div>
                   <span className={`stage ${job.tone}`}>{job.stage}</span>
                   <div className="job-value"><b>{money.format(job.value)}</b><p>{job.owner}</p></div>
                   <div className="job-next"><b>{job.next}</b><p>Next action</p></div>
@@ -205,7 +228,7 @@ export default function Home() {
             <aside className="panel ai-panel">
               <div className="ai-title"><span>✦</span><div><h3>Your AI rundown</h3><p>Updated 8:02 AM</p></div></div>
               <div className="brief"><span className="brief-num red-bg">1</span><div><b>3 estimates are going cold</b><p>No activity in 5+ days. Johnson is the highest value at $18,990.</p><button>Draft follow-ups →</button></div></div>
-              <div className="brief"><span className="brief-num gold-bg">2</span><div><b>Smith needs a response</b><p>They emailed yesterday asking about their shingle delivery.</p><button>Open conversation →</button></div></div>
+              <div className="brief"><span className="brief-num gold-bg">2</span><div><b>{unreadEmailCount?`${unreadEmailCount} client ${unreadEmailCount===1?"reply needs":"replies need"} attention`:"Client inbox is caught up"}</b><p>{unreadEmailCount?"New Gmail replies are waiting inside their job conversations.":"No unread client replies are waiting right now."}</p>{unreadEmailCount>0&&<button onClick={()=>{const job=liveJobs.find(item=>item.unread>0);if(job?.id)router.push(`/jobs/${job.id}`)}}>Open conversation →</button>}</div></div>
               <div className="brief"><span className="brief-num blue-bg">3</span><div><b>2 sold jobs aren’t invoiced</b><p>$49,600 is ready to invoice from approved estimates.</p><button>Create invoices →</button></div></div>
               <div className="ask-ai"><span>✦</span><input placeholder="Ask Roofnut AI to do something..."/><button>↑</button></div>
             </aside>

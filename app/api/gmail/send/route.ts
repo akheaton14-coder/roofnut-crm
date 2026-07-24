@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Sign in is required." }, { status: 401 });
 
-    const payload = await request.json() as { jobId?: string; to?: string; subject?: string; body?: string };
+    const payload = await request.json() as { jobId?: string; to?: string; subject?: string; body?: string; replyToMessageId?: string; gmailThreadId?: string };
     const jobId = payload.jobId?.trim();
     const to = payload.to?.trim();
     const subject = payload.subject?.trim();
@@ -35,13 +35,37 @@ export async function POST(request: NextRequest) {
     if (!job) return NextResponse.json({ error: "Job not found." }, { status: 404 });
 
     const { accessToken, from } = await getGmailAccessToken(user.id, membership.organization_id);
+    let replyHeaders: { messageId?: string; references?: string } | undefined;
+    let threadId: string | undefined;
+    if (payload.replyToMessageId) {
+      const { data: original } = await admin.from("gmail_messages")
+        .select("gmail_message_id,gmail_thread_id")
+        .eq("organization_id", membership.organization_id)
+        .eq("job_id", jobId)
+        .eq("gmail_message_id", payload.replyToMessageId)
+        .maybeSingle();
+      if (!original) return NextResponse.json({ error: "The original email could not be found." }, { status: 404 });
+      threadId = original.gmail_thread_id || payload.gmailThreadId;
+      const originalResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${original.gmail_message_id}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      if (originalResponse.ok) {
+        const originalMessage = await originalResponse.json() as { payload?: { headers?: Array<{name:string;value:string}> } };
+        const headers = originalMessage.payload?.headers || [];
+        replyHeaders = {
+          messageId: headers.find(item => item.name.toLowerCase() === "message-id")?.value,
+          references: headers.find(item => item.name.toLowerCase() === "references")?.value,
+        };
+      }
+    }
     const gmailResponse = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ raw: createGmailMessage(to, from, subject, body) }),
+      body: JSON.stringify({ raw: createGmailMessage(to, from, subject, body, replyHeaders), ...(threadId ? { threadId } : {}) }),
       cache: "no-store",
     });
     const sent = await gmailResponse.json() as { id?: string; threadId?: string; error?: { message?: string } };

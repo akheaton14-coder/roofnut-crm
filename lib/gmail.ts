@@ -56,12 +56,13 @@ export async function getGmailAccessToken(userId: string, organizationId: string
   return { accessToken: refreshed.access_token, from: connection.email_address };
 }
 
-export function createGmailMessage(to: string, from: string, subject: string, body: string) {
+export function createGmailMessage(to: string, from: string, subject: string, body: string, reply?: { messageId?: string; references?: string }) {
   const normalizedSubject = subject.replace(/[\r\n]+/g, " ").trim();
   const message = [
     `From: ${from}`,
     `To: ${to}`,
     `Subject: ${normalizedSubject}`,
+    ...(reply?.messageId ? [`In-Reply-To: ${reply.messageId}`, `References: ${[reply.references, reply.messageId].filter(Boolean).join(" ")}`] : []),
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: 8bit",
